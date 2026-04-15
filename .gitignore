@@ -1,0 +1,10 @@
+venv_bi/
+__pycache__/
+*.pyc
+*.pkg
+build/
+dist/
+pdfs_generados/
+respaldo_inventario/
+respaldo_qr/
+.claude/

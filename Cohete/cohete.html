@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cohete NASA - Despegue y Viaje Espacial Horizontal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(145deg, #0a1f3e 0%, #030c1a 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+            font-family: 'Segoe UI', 'Arial', system-ui, sans-serif;
+            position: relative;
+        }
+
+        /* Contenedor principal centrado */
+        .scene {
+            perspective: 800px;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            position: relative;
+            z-index: 2;
+            padding: 20px;
+        }
+
+        /* Escenario de lanzamiento */
+        .launch-pad {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            width: 100%;
+            min-height: 550px;
+        }
+
+        /* Cohete principal */
+        .rocket {
+            position: relative;
+            width: 180px;
+            height: 480px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 10;
+            transition: transform 0.2s ease;
+            will-change: transform;
+        }
+
+        /* Animación de despegue (ascenso real) */
+        .rocket.takeoff {
+            animation: realTakeoff 3s forwards cubic-bezier(0.4, 0.0, 0.2, 1);
+            pointer-events: none;
+        }
+
+        @keyframes realTakeoff {
+            0% {
+                transform: translateY(0) rotate(0deg);
+                opacity: 1;
+            }
+            20% {
+                transform: translateY(-40px) rotate(-0.8deg);
+            }
+            70% {
+                transform: translateY(-350px) rotate(1.2deg);
+                opacity: 0.9;
+            }
+            100% {
+                transform: translateY(-800px) rotate(2deg);
+                opacity: 0;
+                visibility: hidden;
+            }
+        }
+
+        /* Efecto de vibración previo al despegue */
+        .rocket.pre-takeoff {
+            animation: preLaunchShake 0.2s infinite alternate;
+        }
+
+        @keyframes preLaunchShake {
+            from { transform: translateX(-1px) translateY(0px); }
+            to { transform: translateX(1px) translateY(2px); }
+        }
+
+        /* Cuerpo principal cilíndrico naranja */
+        .main-body {
+            position: relative;
+            width: 100%;
+            height: 68%;
+            background: linear-gradient(110deg, #f45b1c, #ff7e2e, #e04a0e);
+            border-radius: 90px 90px 60px 60px;
+            box-shadow: inset 0 8px 12px rgba(255,255,200,0.4), inset 0 -5px 8px rgba(0,0,0,0.3), 0 10px 20px rgba(0,0,0,0.3);
+            border-left: 2px solid rgba(255,140,50,0.6);
+            border-right: 2px solid rgba(255,80,20,0.5);
+        }
+
+        /* Anillos de etapas */
+        .stage-ring {
+            position: absolute;
+            left: 5%;
+            width: 90%;
+            height: 18px;
+            border-radius: 20px;
+            z-index: 3;
+        }
+        .ring-blue { background: #1e88e5; top: 20%; box-shadow: 0 0 6px #4fc3ff; }
+        .ring-red { background: #e53935; top: 48%; box-shadow: 0 0 5px #ff8a80; }
+        .ring-blue2 { background: #0d47a1; top: 70%; width: 84%; left: 8%; }
+
+        /* Ventanas */
+        .window {
+            position: absolute;
+            background: radial-gradient(circle at 35% 35%, #b3e4ff, #2c6e9e);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            border: 3px solid #ffffffcc;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), 0 0 0 2px #00000033;
+        }
+        .window1 { top: 30%; left: 20%; }
+        .window2 { top: 55%; right: 20%; }
+
+        /* Cápsula superior triangular blanca con punta */
+        .nose-cone {
+            position: relative;
+            width: 0;
+            height: 0;
+            border-left: 52px solid transparent;
+            border-right: 52px solid transparent;
+            border-bottom: 95px solid #f0f4fa;
+            margin-bottom: -8px;
+            z-index: 5;
+            filter: drop-shadow(0 6px 8px rgba(0,0,0,0.2));
+        }
+        .nose-tip {
+            position: absolute;
+            top: -24px;
+            left: -8px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 28px solid #ffd966;
+            transform: rotate(180deg);
+            z-index: 6;
+        }
+
+        /* Cohetes auxiliares laterales */
+        .booster {
+            position: absolute;
+            width: 42px;
+            height: 160px;
+            background: linear-gradient(145deg, #b0bec5, #eceff1, #b0b7c2);
+            border-radius: 30px;
+            bottom: 18%;
+            box-shadow: inset -2px -2px 5px rgba(0,0,0,0.3), inset 2px 2px 5px rgba(255,255,255,0.6), 0 8px 12px rgba(0,0,0,0.3);
+            z-index: 1;
+        }
+        .booster-left { left: -48px; transform: rotate(-2deg); }
+        .booster-right { right: -48px; transform: rotate(2deg); }
+        .booster-nozzle {
+            position: absolute;
+            bottom: -12px;
+            left: 8px;
+            width: 26px;
+            height: 22px;
+            background: radial-gradient(ellipse at 30% 40%, #444, #1a1a1a);
+            border-radius: 40% 40% 30% 30%;
+            box-shadow: inset 0 2px 3px #ffa50066, 0 0 6px #ff9900;
+        }
+        .booster-stripe {
+            position: absolute;
+            width: 70%;
+            height: 12px;
+            background: #e53935;
+            top: 40%;
+            left: 15%;
+            border-radius: 6px;
+        }
+        .booster-stripe-blue { background: #1e88e5; top: 65%; }
+
+        /* Motor principal */
+        .engine {
+            position: absolute;
+            bottom: -20px;
+            width: 70px;
+            height: 40px;
+            background: radial-gradient(ellipse at 50% 30%, #3a2a1a, #1f1408);
+            border-radius: 50%;
+            left: 50%;
+            transform: translateX(-50%);
+            box-shadow: inset 0 2px 8px #ff7f2e, 0 0 12px #ff6600;
+            z-index: 2;
+        }
+        .flame {
+            position: absolute;
+            bottom: -32px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 28px;
+            height: 38px;
+            background: radial-gradient(ellipse, #ffb347, #ff5e00);
+            border-radius: 0 0 40% 40%;
+            filter: blur(2px);
+            transition: all 0.1s ease;
+            z-index: 1;
+        }
+        .rocket.takeoff .flame {
+            animation: intenseFlame 0.05s infinite alternate;
+            width: 44px;
+            height: 70px;
+            filter: blur(4px);
+        }
+        @keyframes intenseFlame {
+            from { opacity: 1; transform: translateX(-50%) scaleY(1); background: #ffaa33; }
+            to { opacity: 1; transform: translateX(-50%) scaleY(1.5); background: #ff3300; }
+        }
+
+        /* Plataforma de lanzamiento */
+        .launch-platform {
+            position: relative;
+            width: 340px;
+            height: 70px;
+            background: linear-gradient(145deg, #2d2f36, #1e2026);
+            border-radius: 12px 12px 30px 30px;
+            margin-top: -15px;
+            z-index: 15;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5), inset 0 1px 2px rgba(255,255,255,0.1);
+            border-top: 3px solid #ffae5a;
+        }
+        .metal-grid {
+            display: flex;
+            justify-content: space-evenly;
+            align-items: center;
+            height: 100%;
+            gap: 8px;
+            padding: 0 20px;
+        }
+        .grid-bar {
+            width: 12px;
+            height: 40px;
+            background: #4a4f5e;
+            border-radius: 6px;
+            box-shadow: inset -1px -1px 0 #1f2128, inset 1px 1px 0 #72788b;
+        }
+
+        /* Suelo tierra */
+        .earth-ground {
+            width: 100%;
+            max-width: 480px;
+            height: 28px;
+            background: repeating-linear-gradient(45deg, #3b2a1f, #3b2a1f 20px, #5d3e24 20px, #5d3e24 40px);
+            border-radius: 100px 100px 20px 20px;
+            margin-top: 8px;
+            box-shadow: inset 0 2px 5px #221d12, 0 6px 12px black;
+        }
+
+        /* Humo estático (base) */
+        .smoke {
+            position: absolute;
+            bottom: -10px;
+            left: 0;
+            width: 100%;
+            height: 80px;
+            pointer-events: none;
+            z-index: 20;
+        }
+        .smoke-puff {
+            position: absolute;
+            background: radial-gradient(circle, rgba(160,140,110,0.6), rgba(80,70,50,0));
+            border-radius: 50%;
+            filter: blur(10px);
+            animation: smokeRise 2s infinite ease-out;
+        }
+        .smoke-puff:nth-child(1) { width: 110px; height: 70px; bottom: 0; left: 20%; animation-duration: 2.4s; }
+        .smoke-puff:nth-child(2) { width: 140px; height: 90px; bottom: -15px; right: 15%; animation-duration: 2.8s; animation-delay: 0.3s; }
+        .smoke-puff:nth-child(3) { width: 90px; height: 60px; bottom: 5px; left: 45%; animation-duration: 1.9s; animation-delay: 0.6s; }
+
+        @keyframes smokeRise {
+            0% { transform: translateY(0px) scale(0.8); opacity: 0.7; }
+            100% { transform: translateY(-70px) scale(1.5); opacity: 0; }
+        }
+
+        /* Contador de cuenta regresiva */
+        .countdown {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 80px;
+            font-weight: bold;
+            font-family: 'Orbitron', 'Courier New', monospace;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            color: #ffaa44;
+            text-shadow: 0 0 20px #ff6600;
+            padding: 20px 35px;
+            border-radius: 60px;
+            border: 2px solid #ffaa44;
+            z-index: 50;
+            text-align: center;
+            letter-spacing: 8px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            transition: all 0.2s ease;
+        }
+        .countdown.fade-out {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.5);
+            pointer-events: none;
+        }
+
+        /* Mensaje de despegue */
+        .launch-message {
+            position: absolute;
+            bottom: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            font-weight: bold;
+            background: #e25822cc;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-family: monospace;
+            white-space: nowrap;
+            backdrop-filter: blur(4px);
+            z-index: 45;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .launch-message.show {
+            opacity: 1;
+        }
+
+        /* Botón de reinicio */
+        .reset-btn {
+            margin-top: 30px;
+            background: #1e3a5f;
+            border: none;
+            color: white;
+            font-family: 'Segoe UI', monospace;
+            font-size: 1rem;
+            padding: 8px 24px;
+            border-radius: 60px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 0 #0a1c2f;
+            font-weight: bold;
+            z-index: 60;
+        }
+        .reset-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #0a1c2f;
+        }
+
+        /* Torres laterales */
+        .gantry {
+            position: absolute;
+            bottom: 60px;
+            left: -70px;
+            width: 40px;
+            height: 180px;
+            background: linear-gradient(90deg, #3f4b5e, #242a33);
+            border-radius: 12px;
+            z-index: 5;
+            transform: skewX(-8deg);
+        }
+        .gantry-right {
+            left: auto;
+            right: -70px;
+            transform: skewX(8deg);
+        }
+
+        /* NASA logo en el cuerpo */
+        .nasa-logo {
+            position: absolute;
+            top: 38%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Arial Black', sans-serif;
+            font-size: 12px;
+            background: #ffffffcc;
+            padding: 2px 8px;
+            border-radius: 40px;
+            color: #c0392b;
+            font-weight: bold;
+            letter-spacing: 2px;
+            backdrop-filter: blur(2px);
+            white-space: nowrap;
+            z-index: 6;
+        }
+
+        /* Estrellas de fondo */
+        .stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            opacity: 0.6;
+            animation: twinkle 3s infinite alternate;
+        }
+        @keyframes twinkle {
+            0% { opacity: 0.2; transform: scale(0.8);}
+            100% { opacity: 1; transform: scale(1);}
+        }
+
+        /* ----- ESTILOS PARA VIAJE HORIZONTAL ----- */
+        .space-travel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 100;
+            background: radial-gradient(ellipse at center, #030c1a 0%, #000000 100%);
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .rocket-horizontal {
+            position: absolute;
+            width: 180px;
+            height: 480px;
+            top: 50%;
+            transform: translateY(-50%) rotate(90deg);
+            left: -200px;
+            z-index: 200;
+            transition: left 0.05s linear;
+        }
+
+        /* Estela de partículas para vuelo horizontal */
+        .trail {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: radial-gradient(circle, #ffaa44, #ff4400);
+            border-radius: 50%;
+            filter: blur(2px);
+            pointer-events: none;
+            z-index: 150;
+            animation: fadeTrail 0.8s forwards;
+        }
+
+        @keyframes fadeTrail {
+            0% { opacity: 0.8; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.2); }
+        }
+
+        /* Estrellas en movimiento */
+        .moving-star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            opacity: 0.8;
+            animation: starMove 4s linear infinite;
+        }
+
+        @keyframes starMove {
+            from { transform: translateX(0); }
+            to { transform: translateX(-100vw); }
+        }
+    </style>
+</head>
+<body>
+<div class="scene" id="launchScene">
+    <div class="launch-pad">
+        <div class="gantry"></div>
+        <div class="gantry gantry-right"></div>
+
+        <!-- COHETE -->
+        <div class="rocket" id="rocket">
+            <div class="nose-cone"><div class="nose-tip"></div></div>
+            <div class="main-body">
+                <div class="stage-ring ring-blue"></div>
+                <div class="stage-ring ring-red"></div>
+                <div class="stage-ring ring-blue2"></div>
+                <div class="window window1"></div>
+                <div class="window window2"></div>
+                <div class="nasa-logo">NASA</div>
+            </div>
+            <div class="booster booster-left">
+                <div class="booster-nozzle"></div>
+                <div class="booster-stripe"></div>
+                <div class="booster-stripe booster-stripe-blue"></div>
+            </div>
+            <div class="booster booster-right">
+                <div class="booster-nozzle"></div>
+                <div class="booster-stripe"></div>
+                <div class="booster-stripe booster-stripe-blue"></div>
+            </div>
+            <div class="engine"></div>
+            <div class="flame"></div>
+        </div>
+
+        <div class="launch-platform">
+            <div class="metal-grid">
+                <div class="grid-bar"></div><div class="grid-bar"></div><div class="grid-bar"></div>
+                <div class="grid-bar"></div><div class="grid-bar"></div><div class="grid-bar"></div>
+            </div>
+        </div>
+        <div class="earth-ground"></div>
+        <div class="smoke">
+            <div class="smoke-puff"></div><div class="smoke-puff"></div><div class="smoke-puff"></div>
+        </div>
+    </div>
+
+    <div class="countdown" id="countdownDisplay">5</div>
+    <div class="launch-message" id="launchMsg">🚀 DESPEGUE 🚀</div>
+    <button class="reset-btn" id="resetBtn">🔄 REINICIAR COHETE</button>
+</div>
+
+<!-- Contenedor para viaje horizontal (inicialmente oculto) -->
+<div class="space-travel" id="spaceTravel">
+    <!-- Aquí se moverá el cohete horizontalmente -->
+</div>
+
+<script>
+    // Elementos
+    const rocket = document.getElementById('rocket');
+    const launchScene = document.getElementById('launchScene');
+    const spaceTravelDiv = document.getElementById('spaceTravel');
+    const countdownEl = document.getElementById('countdownDisplay');
+    const launchMsg = document.getElementById('launchMsg');
+    const resetBtn = document.getElementById('resetBtn');
+
+    let countdownInterval = null;
+    let currentCount = 5;
+    let isLaunched = false;
+    let isCounting = false;
+    let animationFrame = null;
+    let rocketHorizontal = null;
+    let trailInterval = null;
+    let starInterval = null;
+
+    // Crear estrellas en movimiento para el viaje horizontal
+    function createMovingStars() {
+        for (let i = 0; i < 120; i++) {
+            const star = document.createElement('div');
+            star.classList.add('moving-star');
+            const size = Math.random() * 3 + 1;
+            star.style.width = size + 'px';
+            star.style.height = size + 'px';
+            star.style.left = Math.random() * 100 + '%';
+            star.style.top = Math.random() * 100 + '%';
+            star.style.animationDuration = Math.random() * 3 + 2 + 's';
+            star.style.animationDelay = Math.random() * 5 + 's';
+            star.style.opacity = Math.random() * 0.7 + 0.3;
+            spaceTravelDiv.appendChild(star);
+        }
+    }
+
+    // Crear estela de partículas detrás del cohete horizontal
+    function createTrail(x, y) {
+        const trail = document.createElement('div');
+        trail.classList.add('trail');
+        trail.style.left = x + 'px';
+        trail.style.top = y + 'px';
+        spaceTravelDiv.appendChild(trail);
+        setTimeout(() => trail.remove(), 800);
+    }
+
+    // Animación de vuelo horizontal
+    function startHorizontalFlight() {
+        // Ocultar escena de lanzamiento
+        launchScene.style.display = 'none';
+        // Mostrar contenedor de viaje espacial
+        spaceTravelDiv.style.display = 'flex';
+
+        // Clonar el cohete para mantener el diseño original y rotarlo horizontalmente
+        const rocketClone = rocket.cloneNode(true);
+        rocketClone.id = 'rocketHorizontal';
+        rocketClone.classList.remove('takeoff', 'pre-takeoff');
+        rocketClone.classList.add('rocket-horizontal');
+        
+        // Ajustar algunos estilos para orientación horizontal
+        rocketClone.style.transform = 'translateY(-50%) rotate(90deg)';
+        rocketClone.style.left = '-200px';
+        spaceTravelDiv.appendChild(rocketClone);
+        rocketHorizontal = rocketClone;
+
+        let posX = -200;
+        const speed = 4; // píxeles por frame
+        const maxX = window.innerWidth + 200;
+
+        function move() {
+            posX += speed;
+            if (posX > maxX) {
+                posX = -200; // reiniciar para vuelo infinito
+            }
+            rocketHorizontal.style.left = posX + 'px';
+
+            // Generar estela desde la tobera (parte trasera del cohete rotado)
+            const rect = rocketHorizontal.getBoundingClientRect();
+            // La tobera en orientación horizontal: después de rotar 90°, la parte inferior original ahora es la parte trasera.
+            // Calcular posición de la tobera (parte izquierda del cohete en horizontal)
+            const nozzleX = rect.left - 10;
+            const nozzleY = rect.top + rect.height / 2;
+            if (Math.random() < 0.4) { // densidad de estela
+                createTrail(nozzleX, nozzleY);
+            }
+
+            animationFrame = requestAnimationFrame(move);
+        }
+        move();
+
+        // Crear estrellas en movimiento si no existen
+        createMovingStars();
+    }
+
+    // Función para limpiar vuelo horizontal y reiniciar todo
+    function fullReset() {
+        // Detener cualquier animación en curso
+        if (animationFrame) {
+            cancelAnimationFrame(animationFrame);
+            animationFrame = null;
+        }
+        if (trailInterval) clearInterval(trailInterval);
+        if (starInterval) clearInterval(starInterval);
+
+        // Limpiar el contenedor de viaje espacial
+        spaceTravelDiv.innerHTML = '';
+        spaceTravelDiv.style.display = 'none';
+
+        // Restaurar escena de lanzamiento
+        launchScene.style.display = 'flex';
+
+        // Restaurar cohete original (quitar clases y estilos)
+        rocket.classList.remove('takeoff', 'pre-takeoff');
+        rocket.style.transform = '';
+        rocket.style.visibility = '';
+        rocket.style.opacity = '';
+        
+        // Reiniciar contador
+        if (countdownInterval) clearInterval(countdownInterval);
+        currentCount = 5;
+        countdownEl.innerText = '5';
+        countdownEl.classList.remove('fade-out');
+        countdownEl.style.fontSize = '80px';
+        countdownEl.style.letterSpacing = '8px';
+        launchMsg.classList.remove('show');
+        isLaunched = false;
+        isCounting = false;
+
+        // Reiniciar cuenta regresiva
+        startCountdown();
+    }
+
+    // Función de despegue real (vertical)
+    function performTakeoff() {
+        if (isLaunched) return;
+        isLaunched = true;
+        rocket.classList.remove('pre-takeoff');
+        rocket.classList.add('takeoff');
+        launchMsg.classList.add('show');
+        countdownEl.classList.add('fade-out');
+        
+        setTimeout(() => {
+            launchMsg.classList.remove('show');
+        }, 2000);
+
+        // Escuchar el final de la animación de despegue para pasar a vuelo horizontal
+        rocket.addEventListener('animationend', function onTakeoffEnd(e) {
+            if (e.animationName === 'realTakeoff') {
+                rocket.removeEventListener('animationend', onTakeoffEnd);
+                startHorizontalFlight();
+            }
+        });
+    }
+
+    // Cuenta regresiva
+    function startCountdown() {
+        if (isCounting || isLaunched) return;
+        isCounting = true;
+        currentCount = 5;
+        countdownEl.innerText = currentCount;
+        countdownEl.classList.remove('fade-out');
+        countdownEl.style.display = 'flex';
+
+        rocket.classList.add('pre-takeoff');
+
+        countdownInterval = setInterval(() => {
+            if (currentCount > 1) {
+                currentCount--;
+                countdownEl.innerText = currentCount;
+                countdownEl.style.transform = 'translate(-50%, -50%) scale(1.1)';
+                setTimeout(() => {
+                    if (countdownEl) countdownEl.style.transform = '';
+                }, 150);
+            } else if (currentCount === 1) {
+                currentCount--;
+                countdownEl.innerText = '¡DESPEGUE!';
+                countdownEl.style.fontSize = '48px';
+                countdownEl.style.letterSpacing = '2px';
+                setTimeout(() => {
+                    if (countdownInterval) clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    performTakeoff();
+                    isCounting = false;
+                }, 200);
+            } else {
+                if (countdownInterval) clearInterval(countdownInterval);
+                countdownInterval = null;
+                isCounting = false;
+            }
+        }, 1000);
+    }
+
+    // Botón de reinicio
+    resetBtn.addEventListener('click', () => {
+        fullReset();
+    });
+
+    // Inicializar al cargar
+    window.addEventListener('load', () => {
+        startCountdown();
+    });
+
+    // Generar estrellas estáticas de fondo (solo decorativas, no interfieren)
+    const starsContainer = document.createElement('div');
+    starsContainer.className = 'stars';
+    document.body.appendChild(starsContainer);
+    for (let i = 0; i < 200; i++) {
+        const star = document.createElement('div');
+        star.classList.add('star');
+        const size = Math.random() * 3 + 1;
+        star.style.width = size + 'px';
+        star.style.height = size + 'px';
+        star.style.left = Math.random() * 100 + '%';
+        star.style.top = Math.random() * 100 + '%';
+        star.style.animationDelay = Math.random() * 4 + 's';
+        star.style.animationDuration = Math.random() * 2 + 1.5 + 's';
+        starsContainer.appendChild(star);
+    }
+</script>
+</body>
+</html>
