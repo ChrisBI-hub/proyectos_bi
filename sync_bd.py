@@ -1,13 +1,22 @@
 """
-sync_bd.py  (Kali Linux — tu PC con acceso al servidor)
-========================================================
+sync_bd.py v2.0  (Kali Linux — tu PC con acceso al servidor)
+=============================================================
+Versión mejorada para procesar la nueva estructura de Excel de Codigoqr_v2.py
+
 Corre en bucle cada 60 segundos. Revisa el buzón IMAP buscando
 correos con el asunto exacto "ACTUALIZACION_BASE_DE_DATOS".
 Por cada correo nuevo encontrado:
   1. Descarga el adjunto INVENTARIO*.xlsx
-  2. Inserta los registros en SQL Server
-  3. Marca el correo como leído para no procesarlo dos veces
-  4. Guarda el xlsx localmente como respaldo
+  2. Procesa múltiples hojas (CPU, Software, Periféricos, Otros)
+  3. Inserta los registros en SQL Server con estructura adecuada
+  4. Marca el correo como leído para no procesarlo dos veces
+  5. Guarda el xlsx localmente como respaldo
+
+CAMBIOS v2.0:
+  - Soporte para múltiples hojas de Excel
+  - Procesamiento inteligente según tipo de equipamiento
+  - Mejor validación de datos
+  - Logging mejorado
 
 Uso:
     python3 sync_bd.py              # corre indefinidamente
@@ -22,7 +31,7 @@ import sys
 import time
 import imaplib
 import email
-import urllib.parse          # ← FIX: debe ser urllib.parse explícito, no solo urllib
+import urllib.parse
 import argparse
 import io
 from datetime import datetime
@@ -54,7 +63,19 @@ SQL_CONFIG = {
     "password": "5D$bc#kM&5W2T8J40?s%",
     "driver":   "{ODBC Driver 17 for SQL Server}",
 }
-TABLA_SQL  = "Inventario.Codigos_QR"
+
+# Tablas SQL por tipo de inventario
+TABLAS_SQL = {
+    "CPU": {
+        "tabla_principal": "Inventario.CPU",
+        "tabla_software": "Inventario.CPU_Software",
+        "tabla_perifericos": "Inventario.CPU_Perifericos",
+        "tabla_relaciones": "Inventario.CPU_Relaciones",
+    },
+    "OTROS": {
+        "tabla_principal": "Inventario.Otros_Equipos",
+    }
+}
 
 # ── Intervalo de revisión ─────────────────────
 INTERVALO_SEGUNDOS = 60
@@ -70,7 +91,6 @@ def conectar_sql():
             f"DRIVER={c['driver']};SERVER={c['server']};"
             f"DATABASE={c['database']};UID={c['username']};PWD={c['password']}"
         )
-        # FIX: urllib.parse.quote_plus en lugar de urllib.parse.quote_plus
         params = urllib.parse.quote_plus(conn_str)
         engine = create_engine(
             f"mssql+pyodbc:///?odbc_connect={params}",
@@ -86,45 +106,210 @@ def conectar_sql():
         return None
 
 
-def insertar_en_sql(df: pd.DataFrame) -> bool:
+def obtener_ids_existentes(engine, tabla: str, columna_id: str = "CodigoID") -> set:
+    """
+    Obtiene los IDs que ya existen en una tabla SQL.
+    Útil para evitar duplicados.
+    """
+    try:
+        with engine.connect() as conn:
+            schema, tabla_nombre = (tabla.split(".", 1) if "." in tabla else (None, tabla))
+            tabla_completa = f"[{schema}].[{tabla_nombre}]" if schema else f"[{tabla_nombre}]"
+            resultado = conn.execute(text(f"SELECT {columna_id} FROM {tabla_completa}"))
+            return set(row[0] for row in resultado if row[0])
+    except Exception as e:
+        print(f"   ⚠️  No se pudo obtener IDs de {tabla}: {e}")
+        return set()
+
+
+def insertar_dataframe_sql(df: pd.DataFrame, tabla: str, schema: str = None, 
+                          engine=None, columna_id: str = "CodigoID") -> bool:
+    """
+    Inserta un DataFrame en SQL Server, evitando duplicados.
+    """
+    if df.empty:
+        return True
+
+    try:
+        # Obtener IDs existentes si hay columna de ID
+        ids_existentes = set()
+        if columna_id in df.columns:
+            ids_existentes = obtener_ids_existentes(engine, tabla, columna_id)
+
+            # Filtrar solo filas nuevas
+            df_nuevos = df[~df[columna_id].isin(ids_existentes)].copy()
+
+            if df_nuevos.empty:
+                print(f"   ℹ️  {tabla}: {len(df)} registro(s) ya existían — ninguno insertado.")
+                return True
+
+            omitidos = len(df) - len(df_nuevos)
+            if omitidos > 0:
+                print(f"   ⏭️  {tabla}: {omitidos} registro(s) ya existían — omitidos.")
+        else:
+            df_nuevos = df.copy()
+
+        # Convertir timestamps
+        for col in df_nuevos.columns:
+            if "timestamp" in col.lower() or "fecha" in col.lower():
+                try:
+                    df_nuevos[col] = pd.to_datetime(df_nuevos[col], errors="coerce")
+                except:
+                    pass
+
+        print(f"   📤 Insertando {len(df_nuevos)} fila(s) en [{tabla}]...")
+        tabla_nombre = tabla.split(".")[-1]
+        df_nuevos.to_sql(
+            name=tabla_nombre,
+            con=engine,
+            schema=schema,
+            if_exists="append",
+            index=False
+        )
+        print(f"   ✅ {len(df_nuevos)} fila(s) insertada(s) correctamente en [{tabla}]")
+        return True
+
+    except Exception as e:
+        print(f"   ❌ Error al insertar en {tabla}: {e}")
+        return False
+
+
+# ──────────────────────────────────────────────
+# PROCESAMIENTO DE HOJAS EXCEL
+# ──────────────────────────────────────────────
+
+def procesar_archivo_excel(xlsx_bytes: bytes) -> dict:
+    """
+    Lee el archivo Excel y extrae DataFrames de todas las hojas.
+    Retorna dict con estructura: {nombre_hoja: dataframe}
+    """
+    try:
+        xls = pd.ExcelFile(io.BytesIO(xlsx_bytes))
+        hojas = {}
+        
+        print(f"   📊 Hojas encontradas: {xls.sheet_names}")
+        
+        for sheet_name in xls.sheet_names:
+            df = pd.read_excel(io.BytesIO(xlsx_bytes), sheet_name=sheet_name)
+            hojas[sheet_name.lower()] = df
+            print(f"      └─ {sheet_name}: {len(df)} fila(s), {len(df.columns)} columna(s)")
+        
+        return hojas
+    except Exception as e:
+        print(f"   ❌ Error leyendo Excel: {e}")
+        return {}
+
+
+def insertar_estructura_cpu(hojas: dict, engine) -> bool:
+    """
+    Procesa la estructura de CPU con múltiples hojas:
+    - CPU (datos principales)
+    - Software (software instalado)
+    - Perifericos (periféricos asociados)
+    - Relaciones (vinculación de códigos)
+    """
+    exito = True
+    
+    # Procesar tabla principal de CPU
+    if "cpu" in hojas and not hojas["cpu"].empty:
+        print("\n   🖥️  Procesando CPU...")
+        exito &= insertar_dataframe_sql(
+            hojas["cpu"],
+            TABLAS_SQL["CPU"]["tabla_principal"],
+            schema="Inventario",
+            engine=engine,
+            columna_id="Codigo_Barras_CPU"
+        )
+    
+    # Procesar Software
+    if "software" in hojas and not hojas["software"].empty:
+        print("\n   📦 Procesando Software...")
+        exito &= insertar_dataframe_sql(
+            hojas["software"],
+            TABLAS_SQL["CPU"]["tabla_software"],
+            schema="Inventario",
+            engine=engine,
+            columna_id="Host_CPU"
+        )
+    
+    # Procesar Periféricos
+    if "perifericos" in hojas and not hojas["perifericos"].empty:
+        print("\n   🖱️  Procesando Periféricos...")
+        exito &= insertar_dataframe_sql(
+            hojas["perifericos"],
+            TABLAS_SQL["CPU"]["tabla_perifericos"],
+            schema="Inventario",
+            engine=engine,
+            columna_id="Codigo_ID"
+        )
+    
+    # Procesar Relaciones
+    if "relaciones" in hojas and not hojas["relaciones"].empty:
+        print("\n   🔗 Procesando Relaciones...")
+        exito &= insertar_dataframe_sql(
+            hojas["relaciones"],
+            TABLAS_SQL["CPU"]["tabla_relaciones"],
+            schema="Inventario",
+            engine=engine,
+            columna_id=None  # Sin deduplicación para relaciones
+        )
+    
+    return exito
+
+
+def insertar_otros_equipos(hojas: dict, engine) -> bool:
+    """
+    Procesa equipos simples (sillas, mesas, etc.)
+    """
+    if "otros" in hojas and not hojas["otros"].empty:
+        print("\n   📦 Procesando Otros Equipamientos...")
+        return insertar_dataframe_sql(
+            hojas["otros"],
+            TABLAS_SQL["OTROS"]["tabla_principal"],
+            schema="Inventario",
+            engine=engine,
+            columna_id="Codigo_ID"
+        )
+    return True
+
+
+def insertar_en_sql(xlsx_bytes: bytes) -> bool:
+    """
+    Coordina todo el proceso de inserción.
+    """
     print(f"   🔄 Conectando a SQL Server [{SQL_CONFIG['server']}]...")
     engine = conectar_sql()
     if not engine:
         return False
+
     try:
-        schema, tabla = (TABLA_SQL.split(".", 1) if "." in TABLA_SQL else (None, TABLA_SQL))
-        tabla_completa = f"[{schema}].[{tabla}]" if schema else f"[{tabla}]"
+        # Leer Excel
+        hojas = procesar_archivo_excel(xlsx_bytes)
+        
+        if not hojas:
+            print("   ❌ No se pudieron leer las hojas del Excel")
+            return False
 
-        # Consultar los CodigoID que ya existen en la tabla
-        with engine.connect() as conn:
-            resultado = conn.execute(text(f"SELECT CodigoID FROM {tabla_completa}"))
-            ids_existentes = set(row[0] for row in resultado)
+        # Procesar según el tipo de contenido
+        exito = True
+        
+        # Si tiene tabla CPU, es estructura CPU
+        if "cpu" in hojas:
+            exito &= insertar_estructura_cpu(hojas, engine)
+        
+        # Si tiene tabla Otros, procesar equipos simples
+        if "otros" in hojas:
+            exito &= insertar_otros_equipos(hojas, engine)
 
-        # Filtrar solo filas nuevas
-        df_nuevos = df[~df["CodigoID"].isin(ids_existentes)].copy()
+        if not hojas or (not any(["cpu" in h for h in hojas]) and not any(["otros" in h for h in hojas])):
+            print("   ⚠️  Excel sin hojas reconocidas (CPU u Otros)")
 
-        if df_nuevos.empty:
-            print(f"   ℹ️  Sin registros nuevos — todos los {len(df)} del xlsx ya estaban en la tabla.")
-            return True
-
-        omitidos = len(df) - len(df_nuevos)
-        if omitidos > 0:
-            print(f"   ⏭️  {omitidos} registro(s) ya existían en la tabla — omitidos.")
-
-        # Convertir FechaHora a datetime para que SQL Server lo acepte correctamente
-        if "FechaHora" in df_nuevos.columns:
-            df_nuevos["FechaHora"] = pd.to_datetime(df_nuevos["FechaHora"], errors="coerce")
-            nulos = df_nuevos["FechaHora"].isna().sum()
-            if nulos > 0:
-                print(f"   ⚠️  {nulos} valor(es) de FechaHora no pudieron convertirse y se dejarán como NULL.")
-
-        print(f"   📤 Insertando {len(df_nuevos)} fila(s) nuevas en [{TABLA_SQL}]...")
-        df_nuevos.to_sql(name=tabla, con=engine, schema=schema, if_exists="append", index=False)
-        print(f"   ✅ {len(df_nuevos)} fila(s) insertada(s) correctamente en [{TABLA_SQL}]")
-        return True
+        return exito
 
     except Exception as e:
-        print(f"   ❌ Error al insertar en SQL: {e}")
+        print(f"   ❌ Error en procesamiento: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     finally:
         engine.dispose()
@@ -145,6 +330,7 @@ def conectar_imap():
 
 
 def buscar_correos_nuevos(mail: imaplib.IMAP4_SSL) -> list:
+    """Busca correos no leídos con el asunto trigger."""
     mail.select("INBOX")
     _, data = mail.search(None, f'(UNSEEN SUBJECT "{ASUNTO_TRIGGER}")')
     ids = data[0].split()
@@ -152,6 +338,7 @@ def buscar_correos_nuevos(mail: imaplib.IMAP4_SSL) -> list:
 
 
 def extraer_xlsx_de_correo(mail: imaplib.IMAP4_SSL, uid: bytes):
+    """Extrae el adjunto XLSX del correo."""
     _, data = mail.fetch(uid, "(RFC822)")
     msg = email.message_from_bytes(data[0][1])
 
@@ -165,6 +352,7 @@ def extraer_xlsx_de_correo(mail: imaplib.IMAP4_SSL, uid: bytes):
 
 
 def marcar_como_leido(mail: imaplib.IMAP4_SSL, uid: bytes):
+    """Marca un correo como leído."""
     mail.store(uid, "+FLAGS", "\\Seen")
 
 
@@ -172,6 +360,7 @@ def marcar_como_leido(mail: imaplib.IMAP4_SSL, uid: bytes):
 # PROCESAMIENTO DE UN CORREO
 # ──────────────────────────────────────────────
 def procesar_correo(mail: imaplib.IMAP4_SSL, uid: bytes):
+    """Procesa un correo individual."""
     print(f"\n   📩 Procesando correo UID {uid.decode()}...")
 
     xlsx_bytes, filename = extraer_xlsx_de_correo(mail, uid)
@@ -181,17 +370,12 @@ def procesar_correo(mail: imaplib.IMAP4_SSL, uid: bytes):
         marcar_como_leido(mail, uid)
         return
 
-    # Leer el xlsx desde memoria
+    # Leer y validar Excel
     try:
-        df = pd.read_excel(io.BytesIO(xlsx_bytes))
-        print(f"   📊 Archivo: {filename}  |  {len(df)} fila(s)  |  Columnas: {list(df.columns)}")
+        xls = pd.ExcelFile(io.BytesIO(xlsx_bytes))
+        print(f"   📊 Archivo: {filename}  |  Hojas: {xls.sheet_names}")
     except Exception as e:
         print(f"   ❌ Error leyendo xlsx: {e}")
-        marcar_como_leido(mail, uid)
-        return
-
-    if df.empty:
-        print("   ⚠️  El archivo no contiene datos.")
         marcar_como_leido(mail, uid)
         return
 
@@ -204,19 +388,20 @@ def procesar_correo(mail: imaplib.IMAP4_SSL, uid: bytes):
     print(f"   💾 Respaldo guardado → {ruta_respaldo}")
 
     # Insertar en SQL Server
-    exito = insertar_en_sql(df)
+    exito = insertar_en_sql(xlsx_bytes)
 
     if exito:
         marcar_como_leido(mail, uid)
         print(f"   ✉️  Correo marcado como leído.")
     else:
-        print(f"   ⚠️  Inserción fallida — se reintentará en el próximo ciclo.")
+        print(f"   ⚠️  Inserción falló — se reintentará en el próximo ciclo.")
 
 
 # ──────────────────────────────────────────────
 # CICLO PRINCIPAL
 # ──────────────────────────────────────────────
 def revisar_una_vez():
+    """Ejecuta una revisión única del buzón."""
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔍 Revisando bandeja...")
     mail = conectar_imap()
     if not mail:
@@ -247,16 +432,17 @@ def main_loop():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="sync_bd — Sincronizador de inventario a SQL Server")
+    """Entry point del script."""
+    parser = argparse.ArgumentParser(description="sync_bd — Sincronizador de inventario a SQL Server v2.0")
     parser.add_argument("--once", action="store_true", help="Revisar una sola vez y salir")
     args = parser.parse_args()
 
-    print("=" * 55)
-    print("  SYNC_BD — Sincronizador Inventario → SQL Server")
+    print("=" * 60)
+    print("  SYNC_BD v2.0 — Sincronizador Inventario → SQL Server")
     print(f"  Trigger  : {ASUNTO_TRIGGER}")
-    print(f"  Tabla SQL: {TABLA_SQL}")
+    print(f"  Tablas   : CPU, Software, Periféricos, Otros")
     print(f"  Intervalo: {INTERVALO_SEGUNDOS}s")
-    print("=" * 55)
+    print("=" * 60)
 
     if args.once:
         revisar_una_vez()
