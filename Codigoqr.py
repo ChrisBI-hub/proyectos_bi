@@ -663,7 +663,7 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
             "Marca": periferico.get("marca", ""),
             "Estado": periferico.get("estado", ""),
             "Observaciones": periferico.get("observaciones", ""),
-            "Codigo_Barras": codigo_barras,
+            "Codigo_Barras": codigo_id,
             "Codigo_ID": codigo_id,
             "Timestamp": estructura_cpu["timestamp"],
         }
@@ -676,7 +676,7 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
         filas_relaciones.append({
             "Codigo_QR": codigo_qr,
             "Tipo_Periferico": tipo_periferico,
-            "Codigo_Barras_Periferico": datos.get("barras", "")
+            "Codigo_Barras_Periferico": datos.get("codigo_id", "")
         })
     df_relaciones = pd.DataFrame(filas_relaciones)
     

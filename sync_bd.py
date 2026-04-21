@@ -213,8 +213,9 @@ def insertar_estructura_cpu(hojas: dict, engine) -> bool:
     # Procesar tabla principal de CPU
     if "cpu" in hojas and not hojas["cpu"].empty:
         print("\n   🖥️  Procesando CPU...")
+        df_cpu = hojas["cpu"].drop(columns=["Tipo"], errors="ignore")
         exito &= insertar_dataframe_sql(
-            hojas["cpu"],
+            df_cpu,
             TABLAS_SQL["CPU"]["tabla_principal"],
             schema="Inventario",
             engine=engine,
@@ -301,7 +302,8 @@ def insertar_en_sql(xlsx_bytes: bytes) -> bool:
         if "otros" in hojas:
             exito &= insertar_otros_equipos(hojas, engine)
 
-        if not hojas or (not any(["cpu" in h for h in hojas]) and not any(["otros" in h for h in hojas])):
+        hojas_reconocidas = {"cpu", "software", "perifericos", "relaciones", "otros"}
+        if not any(h in hojas_reconocidas for h in hojas):
             print("   ⚠️  Excel sin hojas reconocidas (CPU u Otros)")
 
         return exito
