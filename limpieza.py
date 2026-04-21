@@ -2,38 +2,34 @@ import pandas as pd
 import os
 import glob
 import shutil
+from datetime import datetime
 
 def limpiar_inventario():
-    # Rutas
     ruta_downloads = os.path.expanduser("~/storage/downloads")
     carpeta_imagenes = os.path.join(ruta_downloads, "codigos_generados")
 
-    # Confirmación
     print("⚠️  Esto ELIMINARÁ todas las imágenes QR/códigos de barras")
-    print("   y VACIARÁ el contenido de los archivos Excel de inventario.")
+    print("   y los archivos de sesión INVENTARIO*.xlsx generados hoy.")
     respuesta = input("¿Estás seguro? (S/N): ").strip().upper()
     if respuesta != "S":
         print("Operación cancelada.")
         return
 
-    # 1. Limpiar archivos Excel (solo los de sesión, no el base)
-    patrones_sesion = ["INVENTARIO*.xlsx", "inventario*.xlsx"]  # excluye "inventario.xlsx" fijo
-    archivos_excel = []
-    for p in patrones_sesion:
-        archivos_excel.extend(glob.glob(os.path.join(ruta_downloads, p)))
-    archivos_excel = list(set(archivos_excel))
+    # 1. Eliminar SOLO archivos de sesión (INVENTARIO + fecha, ej: INVENTARIO20260413.xlsx)
+    #    El patrón anterior incluía "inventario*.xlsx" que capturaba inventario.xlsx — corregido.
+    archivos_sesion = glob.glob(os.path.join(ruta_downloads, "INVENTARIO[0-9]*.xlsx"))
 
-    for archivo in archivos_excel:
-        try:
-            print(f"Procesando Excel: {os.path.basename(archivo)}...")
-            df = pd.read_excel(archivo)
-            df_vacio = pd.DataFrame(columns=df.columns)
-            df_vacio.to_excel(archivo, index=False)
-            print(f"   ✅ Limpiado: solo cabeceras conservadas.")
-        except Exception as e:
-            print(f"   ❌ Error: {e}")
+    if archivos_sesion:
+        for archivo in archivos_sesion:
+            try:
+                os.remove(archivo)
+                print(f"   ✅ Eliminado: {os.path.basename(archivo)}")
+            except Exception as e:
+                print(f"   ❌ Error eliminando {os.path.basename(archivo)}: {e}")
+    else:
+        print("ℹ️  No se encontraron archivos de sesión INVENTARIO*.xlsx.")
 
-    # 2. Eliminar carpeta de imágenes (si existe)
+    # 2. Eliminar carpeta de imágenes generadas
     if os.path.exists(carpeta_imagenes):
         try:
             shutil.rmtree(carpeta_imagenes)
@@ -44,6 +40,7 @@ def limpiar_inventario():
         print("ℹ️  No se encontró la carpeta de imágenes.")
 
     print("\n🏁 Limpieza completada.")
+    print("   inventario.xlsx no fue modificado (es el archivo base de catálogos).")
 
 if __name__ == "__main__":
     limpiar_inventario()

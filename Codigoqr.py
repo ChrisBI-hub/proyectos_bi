@@ -367,17 +367,19 @@ def capturar_cpu(empresas: list, areas: list) -> dict | None:
             
             for i, item in enumerate(perifericos_faltantes, 1):
                 print(f"   {i}. {item}")
-            
+
+            tipo_periferico = None
+            terminar = False          # ← bandera de salida del bucle externo
+
             while True:
                 try:
                     idx = int(input("\n   Selecciona número: ")) - 1
                     if idx == len(perifericos_faltantes) - 1:
-                        # Usuario seleccionó "Terminar"
-                        opcion_terminar = input("\n   ¿Estás seguro? (S/N): ").strip().upper()
-                        if opcion_terminar == "S":
-                            break
-                        else:
-                            break  # Sale del while interno pero no del while externo
+                        confirmar = input("\n   ¿Estás seguro? (S/N): ").strip().upper()
+                        if confirmar == "S":
+                            terminar = True   # ← confirma salida
+                        # Si dice N: terminar=False, volvemos a mostrar el menú
+                        break               # siempre sale del bucle de input
                     elif 0 <= idx < len(perifericos_faltantes) - 1:
                         tipo_periferico = perifericos_faltantes[idx]
                         break
@@ -385,51 +387,53 @@ def capturar_cpu(empresas: list, areas: list) -> dict | None:
                         print(f"   ⚠️  Elige entre 1 y {len(perifericos_faltantes)}.")
                 except ValueError:
                     print("   ⚠️  Ingresa un número válido.")
-            else:
-                # Si se ejecutó 'break' en el if de "Terminar", sale del while externo
-                break
-            
-            # Si ya llegó aquí, registrar el periférico
-            if idx < len(perifericos_faltantes) - 1:
-                print(f"\n📌 {tipo_periferico.upper()}:")
-                
-                modelo = input_seguro(f"  Modelo: ")
-                if modelo is None:
-                    continue
-                    
-                no_serie = input_seguro(f"  No. de Serie: ", permitir_vacio=True)
-                if no_serie is None:
-                    continue
-                    
-                marca = input_seguro(f"  Marca: ")
-                if marca is None:
-                    continue
-                
-                print(f"  Estado Físico de {tipo_periferico}:")
-                estado = seleccionar_opcion(ESTADOS, permitir_volver=False)
-                if estado is None:
-                    continue
-                    
-                observaciones = input_seguro(f"  Observaciones: ", permitir_vacio=True)
-                if observaciones is None:
-                    continue
 
-                periferico = {
-                    "tipo": tipo_periferico,
-                    "modelo": modelo,
-                    "no_serie": no_serie,
-                    "marca": marca,
-                    "estado": estado,
-                    "observaciones": observaciones,
-                }
-                estructura_cpu["perifericos"].append(periferico)
+            if terminar:
+                break                 # ← ahora sí sale del bucle externo de periféricos
+
+            if tipo_periferico is None:
+                continue              # usuario dijo N, vuelve a mostrar el menú
+
+            # Registrar el periférico seleccionado
+            print(f"\n📌 {tipo_periferico.upper()}:")
+            
+            modelo = input_seguro(f"  Modelo: ")
+            if modelo is None:
+                continue
                 
-                # Contar cuántos de este tipo se han registrado
-                if tipo_periferico not in perifericos_registrados:
-                    perifericos_registrados[tipo_periferico] = 0
-                perifericos_registrados[tipo_periferico] += 1
+            no_serie = input_seguro(f"  No. de Serie: ", permitir_vacio=True)
+            if no_serie is None:
+                continue
                 
-                print(f"   ✅ {tipo_periferico} registrado ({perifericos_registrados[tipo_periferico]})")
+            marca = input_seguro(f"  Marca: ")
+            if marca is None:
+                continue
+            
+            print(f"  Estado Físico de {tipo_periferico}:")
+            estado = seleccionar_opcion(ESTADOS, permitir_volver=False)
+            if estado is None:
+                continue
+                
+            observaciones = input_seguro(f"  Observaciones: ", permitir_vacio=True)
+            if observaciones is None:
+                continue
+
+            periferico = {
+                "tipo": tipo_periferico,
+                "modelo": modelo,
+                "no_serie": no_serie,
+                "marca": marca,
+                "estado": estado,
+                "observaciones": observaciones,
+            }
+            estructura_cpu["perifericos"].append(periferico)
+            
+            # Contar cuántos de este tipo se han registrado
+            if tipo_periferico not in perifericos_registrados:
+                perifericos_registrados[tipo_periferico] = 0
+            perifericos_registrados[tipo_periferico] += 1
+            
+            print(f"   ✅ {tipo_periferico} registrado ({perifericos_registrados[tipo_periferico]})")
 
     return estructura_cpu
 
