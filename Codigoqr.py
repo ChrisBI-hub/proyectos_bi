@@ -1,17 +1,20 @@
 """
-CodigoQR.py  (Termux) v2.0
+CodigoQR.py  (Termux) v2.1
 ==========================
-Sistema mejorado de captura de inventario con soporte para:
-  - CPU (con software y periféricos)
+Sistema mejorado de captura de inventario con:
+  - CPU (con opciones: hardware+software, solo hardware, solo software)
   - Equipos individuales (sillas, mesas, micrófonos, etc.)
   - Periféricos individuales
+  
+MEJORAS v2.1:
+  ✅ Botón "Volver" en menús para correcciones
+  ✅ 3 opciones para registro de CPU (HW+SW, solo HW, solo SW con Host)
+  ✅ Sin repetición de menús innecesarios
+  ✅ Múltiples del mismo periférico (2 monitores, 2 auriculares, etc.)
+  ✅ Resumen de CPU antes de enviar con opción de editar
 
-Flujo:
-  1. Menú inicial: seleccionar tipo de equipamiento
-  2. Si CPU → formulario completo (hardware + software + periféricos)
-  3. Si otro → formulario simplificado
-  4. Genera QR único para CPU, código de barras para cada objeto
-  5. Envía xlsx con asunto trigger a sync_bd.py
+Uso:
+    python3 Codigoqr.py (corre normalmente)
 """
 
 import sys
@@ -61,8 +64,6 @@ def instalar_pip_paquetes():
             if r.returncode != 0:
                 sys.exit(1)
         print("\n✅ Dependencias listas.\n")
-    else:
-        print("   Sin instalaciones pendientes.\n")
 
 instalar_paquetes_sistema()
 instalar_pip_paquetes()
@@ -84,8 +85,8 @@ from barcode.writer import ImageWriter
 # ──────────────────────────────────────────────
 # CONFIGURACIÓN
 # ──────────────────────────────────────────────
-archivo_excel  = '~/storage/downloads/inventario.xlsx'
-carpeta_salida = '~/storage/downloads/codigos_generados'
+archivo_excel  = '/sdcard/Download/inventario.xlsx'
+carpeta_salida = '/sdcard/Download/codigos_generados'
 
 FECHA_HOY      = datetime.now().strftime("%Y%m%d")
 ARCHIVO_SESION = f"INVENTARIO{FECHA_HOY}.xlsx"
@@ -100,249 +101,181 @@ ASUNTO_TRIGGER = "ACTUALIZACION_BASE_DE_DATOS"
 
 DESTINATARIOS  = [
     "ccarbajal@abcsc.mx",
-#    "myanez@abcsc.mx",
-#    "sgonzalez@abcsc.mx",
-#    "ymontoya@abcsc.mx",
+    "myanez@abcsc.mx",
+    "sgonzalez@abcsc.mx",
+    "ymontoya@abcsc.mx",
     "reportes.bi@abcsc.mx",
 ]
 
-# Directorios base
 EDIFICIOS = ["NORTE 180", "NORTE 182", "PATIO SEC"]
-ESTADOS = ["1. Mal estado", "2. Futuro mantenimiento", "3. Buen estado", "4. Equipo nuevo"]
+ESTADOS = ["Mal estado", "Futuro mantenimiento", "Buen estado", "Equipo nuevo"]
 TIPOS_DISCO = ["HDD", "SSD"]
-PERIFERICOS_DISPONIBLES = ["Monitor", "Teclado", "Mouse", "Webcam", "Auriculares", "Micrófono"]
+PERIFERICOS_DISPONIBLES = ["Monitor", "Teclado", "Mouse", "Webcam", "Auriculares", "Micrófono", "Bocinas"]
 TIPOS_EQUIPAMIENTO = [
     "CPU",
     "Silla",
     "Mesa",
     "Micrófono",
-    "Periférico Individual",
-    "Finalizar Inventario"
+    "Periférico Individual"
 ]
 
 os.makedirs(carpeta_salida, exist_ok=True)
 
 
 # ──────────────────────────────────────────────
-# HELPERS
+# HELPERS CON BOTÓN VOLVER
 # ──────────────────────────────────────────────
-def extraer_tres_letras(nombre: str) -> str:
-    """Extrae 3 letras representativas del nombre."""
-    limpio = nombre.replace(" ", "").upper()
-    if len(limpio) == 0: 
-        return "XXX"
-    if len(limpio) == 1: 
-        return limpio * 3
-    if len(limpio) == 2: 
-        return limpio + "X"
-    return f"{limpio[0]}{limpio[len(limpio) // 2]}{limpio[-1]}"
 
-
-def seleccionar_opcion(lista: list, titulo: str = None, permitir_numeros=True) -> str:
+def seleccionar_opcion(lista: list, titulo: str = None, permitir_volver=True) -> str | None:
     """
-    Menú de selección mejorado.
-    Si permitir_numeros=True, devuelve el item; si no, devuelve el índice como string.
+    Menú de selección con opción de volver.
+    Retorna None si selecciona volver.
     """
+    opciones_mostrar = lista.copy()
+    if permitir_volver:
+        opciones_mostrar.append("← Volver")
+    
     if titulo:
         print(f"\n{titulo}")
-    for i, item in enumerate(lista, 1):
+    for i, item in enumerate(opciones_mostrar, 1):
         print(f"   {i}. {item}")
+    
     while True:
         try:
             idx = int(input("\n   Selecciona número: ")) - 1
+            if idx == len(lista) and permitir_volver:
+                return None  # Usuario seleccionó "Volver"
             if 0 <= idx < len(lista):
-                return lista[idx] if permitir_numeros else str(idx)
-            print(f"   ⚠️  Elige entre 1 y {len(lista)}.")
+                return lista[idx]
+            print(f"   ⚠️  Elige entre 1 y {len(opciones_mostrar)}.")
         except ValueError:
             print("   ⚠️  Ingresa un número válido.")
 
 
-def input_seguro(prompt: str, permitir_vacio=False) -> str:
-    """Input con validación."""
+def input_seguro(prompt: str, permitir_vacio=False) -> str | None:
+    """Input con validación. Retorna None si cancela."""
     while True:
         valor = input(prompt).strip()
-        if valor or permitir_vacio:
-            return valor
-        print("   ⚠️  Campo requerido.")
-
-
-def numero_entero(prompt: str, minimo=1) -> int:
-    """Input que garantiza un número entero."""
-    while True:
-        try:
-            valor = int(input(prompt))
-            if valor >= minimo:
+        if valor == "":
+            if permitir_vacio:
                 return valor
-            print(f"   ⚠️  Debe ser >= {minimo}.")
-        except ValueError:
-            print("   ⚠️  Ingresa un número válido.")
+            if input("   ¿Dejar vacío? (S/N): ").strip().upper() == "S":
+                return valor
+            continue
+        return valor
 
 
 # ──────────────────────────────────────────────
-# CAPTURA POR TIPO DE EQUIPAMIENTO
+# CAPTURA DE CPU (3 OPCIONES)
 # ──────────────────────────────────────────────
 
-def capturar_cpu(empresas: list, areas: list) -> dict:
-    """Captura datos completos de una CPU con software y periféricos."""
+def capturar_cpu(empresas: list, areas: list) -> dict | None:
+    """
+    Captura datos de CPU con 3 opciones:
+    1. Hardware + Software
+    2. Solo Hardware
+    3. Software (con Host)
+    """
+    
+    # Seleccionar qué registrar
+    while True:
+        print("\n" + "=" * 55)
+        print("  REGISTRO CPU — OPCIONES")
+        print("=" * 55)
+        
+        opcion = seleccionar_opcion(
+            ["Hardware + Software", "Solo Hardware", "Solo Software (con Host)"],
+            "\n¿Qué deseas registrar?",
+            permitir_volver=True
+        )
+        
+        if opcion is None:
+            return None  # Volver al menú principal
+        
+        break
+    
     print("\n" + "=" * 55)
-    print("  REGISTRO CPU — HARDWARE + SOFTWARE + PERIFÉRICOS")
+    print(f"  REGISTRO CPU — {opcion.upper()}")
     print(f"  {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     print("=" * 55)
 
-    # ─────────────────────────────────────
-    # SECCIÓN 1: DATOS BÁSICOS CPU
-    # ─────────────────────────────────────
-    print("\n🖥️  HARDWARE CPU")
-    print("─" * 55)
-    
-    host = input_seguro("Host: ")
-    no_serie = input_seguro("No. de Serie: ")
-    empresa = seleccionar_opcion(empresas, "🏢 Empresa:")
-    edificio = seleccionar_opcion(EDIFICIOS, "🏗️  Edificio:")
-    area = seleccionar_opcion(areas, "📍 Área:")
-    
-    print("\n📊 Estado Físico:")
-    estado_idx = seleccionar_opcion(ESTADOS, permitir_numeros=False)
-    estado_map = {
-        "0": "Mal estado",
-        "1": "Futuro mantenimiento",
-        "2": "Buen estado",
-        "3": "Equipo nuevo"
-    }
-    estado = estado_map.get(estado_idx, "Buen estado")
-    
-    marca = input_seguro("Marca: ")
-    modelo = input_seguro("Modelo: ")
-    procesador = input_seguro("Procesador (ej: Intel i7): ")
-    ram = input_seguro("RAM (ej: 16GB): ")
-    capacidad_disco = input_seguro("Capacidad Disco (ej: 512GB): ")
-    
-    print("\n💾 Tipo de Disco Duro:")
-    tipo_disco = seleccionar_opcion(TIPOS_DISCO)
-    
-    observaciones_hw = input_seguro("Observaciones Hardware: ", permitir_vacio=True)
-
-    # ─────────────────────────────────────
-    # SECCIÓN 2: SOFTWARE
-    # ─────────────────────────────────────
-    print("\n\n📦 SOFTWARE INSTALADO")
-    print("─" * 55)
-    
-    so = input_seguro("Sistema Operativo (ej: Windows 10): ")
-    office = input_seguro("Office (ej: Office 2021, LibreOffice, Ninguno): ")
-    antivirus = input_seguro("Antivirus (ej: Windows Defender, Norton, Ninguno): ")
-    lector_pdf = input_seguro("Lector de PDF (ej: Adobe Reader, Foxit, Ninguno): ")
-    erp = input_seguro("ERP (ej: SAP, Oracle, Ninguno): ")
-    
-    print("\n📝 Otros Software:")
-    otro1 = input_seguro("Otro Software 1: ", permitir_vacio=True)
-    otro2 = input_seguro("Otro Software 2: ", permitir_vacio=True)
-    otro3 = input_seguro("Otro Software 3: ", permitir_vacio=True)
-
-    software = {
-        "SO": so,
-        "Office": office,
-        "Antivirus": antivirus,
-        "Lector_PDF": lector_pdf,
-        "ERP": erp,
-        "Otro1": otro1,
-        "Otro2": otro2,
-        "Otro3": otro3,
-    }
-
-    # ─────────────────────────────────────
-    # SECCIÓN 3: PERIFÉRICOS
-    # ─────────────────────────────────────
-    print("\n\n🖱️  PERIFÉRICOS")
-    print("─" * 55)
-    
-    perifericos = []
-    perifericos_capturados = set()
-
-    # Monitor
-    print("\n📺 MONITOR:")
-    agregarmon = input("¿Registrar monitor? (S/N): ").strip().upper()
-    if agregarmon == "S":
-        monitor = {
-            "tipo": "Monitor",
-            "modelo": input_seguro("  Modelo: "),
-            "no_serie": input_seguro("  No. de Serie: "),
-            "marca": input_seguro("  Marca: "),
-            "estado": seleccionar_opcion(ESTADOS, "  Estado Físico:"),
-            "observaciones": input_seguro("  Observaciones: ", permitir_vacio=True),
-        }
-        perifericos.append(monitor)
-        perifericos_capturados.add("Monitor")
-
-    # Teclado
-    print("\n⌨️  TECLADO:")
-    agrega_teclado = input("¿Registrar teclado? (S/N): ").strip().upper()
-    if agrega_teclado == "S":
-        teclado = {
-            "tipo": "Teclado",
-            "modelo": input_seguro("  Modelo: "),
-            "no_serie": input_seguro("  No. de Serie: ", permitir_vacio=True),
-            "marca": input_seguro("  Marca: "),
-            "estado": seleccionar_opcion(ESTADOS, "  Estado Físico:"),
-            "observaciones": input_seguro("  Observaciones: ", permitir_vacio=True),
-        }
-        perifericos.append(teclado)
-        perifericos_capturados.add("Teclado")
-
-    # Mouse
-    print("\n🖱️  MOUSE:")
-    agrega_mouse = input("¿Registrar mouse? (S/N): ").strip().upper()
-    if agrega_mouse == "S":
-        mouse = {
-            "tipo": "Mouse",
-            "modelo": input_seguro("  Modelo: "),
-            "no_serie": input_seguro("  No. de Serie: ", permitir_vacio=True),
-            "marca": input_seguro("  Marca: "),
-            "estado": seleccionar_opcion(ESTADOS, "  Estado Físico:"),
-            "observaciones": input_seguro("  Observaciones: ", permitir_vacio=True),
-        }
-        perifericos.append(mouse)
-        perifericos_capturados.add("Mouse")
-
-    # Periféricos adicionales
-    while True:
-        perifericos_faltantes = [p for p in PERIFERICOS_DISPONIBLES if p not in perifericos_capturados]
-        if not perifericos_faltantes:
-            break
-        
-        agrega_mas = input("\n¿Agregar más periféricos? (S/N): ").strip().upper()
-        if agrega_mas != "S":
-            break
-        
-        print("\n📌 Periféricos disponibles:")
-        tipo_periferico = seleccionar_opcion(perifericos_faltantes)
-        
-        periferico = {
-            "tipo": tipo_periferico,
-            "modelo": input_seguro(f"  Modelo de {tipo_periferico}: "),
-            "no_serie": input_seguro(f"  No. de Serie: ", permitir_vacio=True),
-            "marca": input_seguro(f"  Marca: "),
-            "estado": seleccionar_opcion(ESTADOS, f"  Estado Físico de {tipo_periferico}:"),
-            "observaciones": input_seguro(f"  Observaciones: ", permitir_vacio=True),
-        }
-        perifericos.append(periferico)
-        perifericos_capturados.add(tipo_periferico)
-
-    # ─────────────────────────────────────
-    # ARMAR ESTRUCTURA RETORNO
-    # ─────────────────────────────────────
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
     estructura_cpu = {
         "tipo_inventario": "CPU",
-        "timestamp": timestamp,
-        "cpu": {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "cpu": {},
+        "software": {},
+        "perifericos": [],
+        "opcion": opcion,
+    }
+
+    # ─────────────────────────────────
+    # SECCIÓN 1: HARDWARE
+    # ─────────────────────────────────
+    if "Hardware" in opcion or "Solo Hardware" == opcion:
+        print("\n🖥️  HARDWARE CPU")
+        print("─" * 55)
+        
+        host = input_seguro("Host: ")
+        if host is None:
+            return None
+        
+        no_serie = input_seguro("No. de Serie: ")
+        if no_serie is None:
+            return None
+        
+        empresa = seleccionar_opcion(empresas, "🏢 Empresa:", permitir_volver=False)
+        if empresa is None:
+            return None
+            
+        edificio = seleccionar_opcion(EDIFICIOS, "🏗️  Edificio:", permitir_volver=False)
+        if edificio is None:
+            return None
+            
+        area = seleccionar_opcion(areas, "📍 Área:", permitir_volver=False)
+        if area is None:
+            return None
+        
+        print("\n📊 Estado Físico:")
+        estado_idx = seleccionar_opcion(ESTADOS, permitir_volver=False)
+        if estado_idx is None:
+            return None
+        
+        marca = input_seguro("Marca: ")
+        if marca is None:
+            return None
+            
+        modelo = input_seguro("Modelo: ")
+        if modelo is None:
+            return None
+            
+        procesador = input_seguro("Procesador (ej: Intel i7): ")
+        if procesador is None:
+            return None
+            
+        ram = input_seguro("RAM (ej: 16GB): ")
+        if ram is None:
+            return None
+            
+        capacidad_disco = input_seguro("Capacidad Disco (ej: 512GB): ")
+        if capacidad_disco is None:
+            return None
+        
+        print("\n💾 Tipo de Disco Duro:")
+        tipo_disco = seleccionar_opcion(TIPOS_DISCO, permitir_volver=False)
+        if tipo_disco is None:
+            return None
+        
+        observaciones_hw = input_seguro("Observaciones Hardware: ", permitir_vacio=True)
+        if observaciones_hw is None:
+            return None
+
+        estructura_cpu["cpu"] = {
             "host": host,
             "no_serie": no_serie,
             "empresa": empresa,
             "edificio": edificio,
             "area": area,
-            "estado": estado,
+            "estado": estado_idx,
             "marca": marca,
             "modelo": modelo,
             "procesador": procesador,
@@ -350,19 +283,196 @@ def capturar_cpu(empresas: list, areas: list) -> dict:
             "capacidad_disco": capacidad_disco,
             "tipo_disco": tipo_disco,
             "observaciones": observaciones_hw,
-        },
-        "software": software,
-        "perifericos": perifericos,
-    }
+        }
 
-    print(f"\n✅ CPU '{host}' registrada con {len(perifericos)} periférico(s).")
+    # ─────────────────────────────────
+    # SECCIÓN 2: SOFTWARE
+    # ─────────────────────────────────
+    if "Software" in opcion:
+        print("\n📦 SOFTWARE INSTALADO")
+        print("─" * 55)
+        
+        # Si es solo software, pedir el Host
+        if "Solo Software" in opcion:
+            host_cpu = input_seguro("Host de la CPU: ")
+            if host_cpu is None:
+                return None
+            estructura_cpu["cpu"]["host"] = host_cpu
+        
+        so = input_seguro("Sistema Operativo (ej: Windows 10): ")
+        if so is None:
+            return None
+            
+        office = input_seguro("Office (ej: Office 2021, LibreOffice, Ninguno): ")
+        if office is None:
+            return None
+            
+        antivirus = input_seguro("Antivirus (ej: Windows Defender, Norton, Ninguno): ")
+        if antivirus is None:
+            return None
+            
+        lector_pdf = input_seguro("Lector de PDF (ej: Adobe Reader, Foxit, Ninguno): ")
+        if lector_pdf is None:
+            return None
+            
+        erp = input_seguro("ERP (ej: SAP, Oracle, Ninguno): ")
+        if erp is None:
+            return None
+        
+        print("\n📝 Otros Software:")
+        otro1 = input_seguro("Otro Software 1: ", permitir_vacio=True)
+        if otro1 is None:
+            return None
+            
+        otro2 = input_seguro("Otro Software 2: ", permitir_vacio=True)
+        if otro2 is None:
+            return None
+            
+        otro3 = input_seguro("Otro Software 3: ", permitir_vacio=True)
+        if otro3 is None:
+            return None
+
+        estructura_cpu["software"] = {
+            "SO": so,
+            "Office": office,
+            "Antivirus": antivirus,
+            "Lector_PDF": lector_pdf,
+            "ERP": erp,
+            "Otro1": otro1,
+            "Otro2": otro2,
+            "Otro3": otro3,
+        }
+
+    # ─────────────────────────────────
+    # SECCIÓN 3: PERIFÉRICOS
+    # ─────────────────────────────────
+    if "Hardware" in opcion and "Solo Software" not in opcion:
+        print("\n🖱️  PERIFÉRICOS")
+        print("─" * 55)
+        
+        perifericos_registrados = {}
+        
+        while True:
+            print("\n¿Qué periférico deseas registrar?")
+            perifericos_faltantes = [
+                p for p in PERIFERICOS_DISPONIBLES 
+                if p not in perifericos_registrados or perifericos_registrados[p] < 2
+            ]
+            
+            if not perifericos_faltantes:
+                print("   📌 Ya han sido registrados todos los periféricos disponibles.")
+                break
+            
+            perifericos_faltantes.append("← Terminar periféricos")
+            
+            for i, item in enumerate(perifericos_faltantes, 1):
+                print(f"   {i}. {item}")
+            
+            while True:
+                try:
+                    idx = int(input("\n   Selecciona número: ")) - 1
+                    if idx == len(perifericos_faltantes) - 1:
+                        # Usuario seleccionó "Terminar"
+                        opcion_terminar = input("\n   ¿Estás seguro? (S/N): ").strip().upper()
+                        if opcion_terminar == "S":
+                            break
+                        else:
+                            break  # Sale del while interno pero no del while externo
+                    elif 0 <= idx < len(perifericos_faltantes) - 1:
+                        tipo_periferico = perifericos_faltantes[idx]
+                        break
+                    else:
+                        print(f"   ⚠️  Elige entre 1 y {len(perifericos_faltantes)}.")
+                except ValueError:
+                    print("   ⚠️  Ingresa un número válido.")
+            else:
+                # Si se ejecutó 'break' en el if de "Terminar", sale del while externo
+                break
+            
+            # Si ya llegó aquí, registrar el periférico
+            if idx < len(perifericos_faltantes) - 1:
+                print(f"\n📌 {tipo_periferico.upper()}:")
+                
+                modelo = input_seguro(f"  Modelo: ")
+                if modelo is None:
+                    continue
+                    
+                no_serie = input_seguro(f"  No. de Serie: ", permitir_vacio=True)
+                if no_serie is None:
+                    continue
+                    
+                marca = input_seguro(f"  Marca: ")
+                if marca is None:
+                    continue
+                
+                print(f"  Estado Físico de {tipo_periferico}:")
+                estado = seleccionar_opcion(ESTADOS, permitir_volver=False)
+                if estado is None:
+                    continue
+                    
+                observaciones = input_seguro(f"  Observaciones: ", permitir_vacio=True)
+                if observaciones is None:
+                    continue
+
+                periferico = {
+                    "tipo": tipo_periferico,
+                    "modelo": modelo,
+                    "no_serie": no_serie,
+                    "marca": marca,
+                    "estado": estado,
+                    "observaciones": observaciones,
+                }
+                estructura_cpu["perifericos"].append(periferico)
+                
+                # Contar cuántos de este tipo se han registrado
+                if tipo_periferico not in perifericos_registrados:
+                    perifericos_registrados[tipo_periferico] = 0
+                perifericos_registrados[tipo_periferico] += 1
+                
+                print(f"   ✅ {tipo_periferico} registrado ({perifericos_registrados[tipo_periferico]})")
+
     return estructura_cpu
 
 
-def capturar_equipo_simple(empresas: list, areas: list) -> dict:
+def mostrar_resumen_cpu(estructura_cpu: dict) -> bool:
+    """
+    Muestra resumen de CPU registrada.
+    Retorna True si usuario quiere continuar, False si quiere editar.
+    """
+    print("\n" + "=" * 60)
+    print("  📋 RESUMEN DE REGISTRO CPU")
+    print("=" * 60)
+
+    if estructura_cpu["cpu"]:
+        print("\n🖥️  HARDWARE:")
+        for clave, valor in estructura_cpu["cpu"].items():
+            print(f"   • {clave:20} : {valor}")
+
+    if estructura_cpu["software"]:
+        print("\n📦 SOFTWARE:")
+        for clave, valor in estructura_cpu["software"].items():
+            if valor:  # Solo mostrar si tiene valor
+                print(f"   • {clave:20} : {valor}")
+
+    if estructura_cpu["perifericos"]:
+        print("\n🖱️  PERIFÉRICOS:")
+        for i, per in enumerate(estructura_cpu["perifericos"], 1):
+            print(f"   {i}. {per['tipo']}")
+            for clave, valor in per.items():
+                if clave != "tipo" and valor:
+                    print(f"      • {clave:18} : {valor}")
+
+    print("\n" + "=" * 60)
+    opcion = input("¿Deseas continuar? (S/N): ").strip().upper()
+    return opcion == "S"
+
+
+def capturar_equipo_simple(empresas: list, areas: list) -> dict | None:
     """Captura datos simplificados para otros tipos de equipamiento."""
     
-    tipo = seleccionar_opcion(TIPOS_EQUIPAMIENTO[1:], "¿Qué tipo de equipamiento?")
+    tipo = seleccionar_opcion(TIPOS_EQUIPAMIENTO[1:], "¿Qué tipo de equipamiento?", permitir_volver=True)
+    if tipo is None:
+        return None
     
     print("\n" + "=" * 45)
     print(f"  REGISTRO: {tipo.upper()}")
@@ -370,25 +480,41 @@ def capturar_equipo_simple(empresas: list, areas: list) -> dict:
     print("=" * 45)
 
     nombre = input_seguro(f"\nNombre/Descripción del {tipo}: ")
+    if nombre is None:
+        return None
+        
     no_serie = input_seguro("No. de Serie: ", permitir_vacio=True)
+    if no_serie is None:
+        return None
+        
     marca = input_seguro("Marca: ", permitir_vacio=True)
+    if marca is None:
+        return None
+        
     modelo = input_seguro("Modelo: ", permitir_vacio=True)
+    if modelo is None:
+        return None
     
-    empresa = seleccionar_opcion(empresas, "🏢 Empresa:")
-    edificio = seleccionar_opcion(EDIFICIOS, "🏗️  Edificio:")
-    area = seleccionar_opcion(areas, "📍 Área:")
+    empresa = seleccionar_opcion(empresas, "🏢 Empresa:", permitir_volver=True)
+    if empresa is None:
+        return None
+        
+    edificio = seleccionar_opcion(EDIFICIOS, "🏗️  Edificio:", permitir_volver=True)
+    if edificio is None:
+        return None
+        
+    area = seleccionar_opcion(areas, "📍 Área:", permitir_volver=True)
+    if area is None:
+        return None
     
     print("\n📊 Estado Físico:")
-    estado_idx = seleccionar_opcion(ESTADOS, permitir_numeros=False)
-    estado_map = {
-        "0": "Mal estado",
-        "1": "Futuro mantenimiento",
-        "2": "Buen estado",
-        "3": "Equipo nuevo"
-    }
-    estado = estado_map.get(estado_idx, "Buen estado")
+    estado = seleccionar_opcion(ESTADOS, permitir_volver=False)
+    if estado is None:
+        return None
     
     observaciones = input_seguro("Observaciones: ", permitir_vacio=True)
+    if observaciones is None:
+        return None
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -413,22 +539,28 @@ def capturar_equipo_simple(empresas: list, areas: list) -> dict:
 
 
 # ──────────────────────────────────────────────
-# GENERACIÓN DE CÓDIGOS (QR y BARRAS)
+# GENERACIÓN DE CÓDIGOS
 # ──────────────────────────────────────────────
 
-def generar_qr_cpu(estructura_cpu: dict, numero_correlativo: int) -> tuple[str, str]:
-    """
-    Genera UN SOLO QR para toda la estructura CPU.
-    Devuelve (ruta_qr, contenido_qr_json)
-    """
-    # Crear contenido JSON comprimido
+def extraer_tres_letras(nombre: str) -> str:
+    """Extrae 3 letras representativas del nombre."""
+    limpio = nombre.replace(" ", "").upper()
+    if len(limpio) == 0: 
+        return "XXX"
+    if len(limpio) == 1: 
+        return limpio * 3
+    if len(limpio) == 2: 
+        return limpio + "X"
+    return f"{limpio[0]}{limpio[len(limpio) // 2]}{limpio[-1]}"
+
+
+def generar_qr_cpu(estructura_cpu: dict, numero_correlativo: int) -> tuple:
+    """Genera UN SOLO QR para toda la estructura CPU."""
     contenido_json = json.dumps({
         "tipo": "CPU",
-        "host": estructura_cpu["cpu"]["host"],
-        "no_serie": estructura_cpu["cpu"]["no_serie"],
-        "empresa": estructura_cpu["cpu"]["empresa"],
-        "procesador": estructura_cpu["cpu"]["procesador"],
-        "ram": estructura_cpu["cpu"]["ram"],
+        "host": estructura_cpu["cpu"].get("host", ""),
+        "no_serie": estructura_cpu["cpu"].get("no_serie", ""),
+        "empresa": estructura_cpu["cpu"].get("empresa", ""),
         "timestamp": estructura_cpu["timestamp"],
     })
 
@@ -441,8 +573,8 @@ def generar_qr_cpu(estructura_cpu: dict, numero_correlativo: int) -> tuple[str, 
     return ruta_qr, contenido_json, codigo_id
 
 
-def generar_barras_objeto(tipo: str, no_serie: str, numero_correlativo: int) -> str:
-    """Genera un código de barras para cada objeto (CPU, periférico, etc)."""
+def generar_barras_objeto(tipo: str, numero_correlativo: int) -> tuple:
+    """Genera un código de barras para cada objeto."""
     codigo_id = f"{extraer_tres_letras(tipo)}{numero_correlativo:04d}"
     ruta_barras_base = os.path.join(carpeta_salida, f"barras_{codigo_id}")
     
@@ -453,7 +585,7 @@ def generar_barras_objeto(tipo: str, no_serie: str, numero_correlativo: int) -> 
     return ruta_barras_final, codigo_id
 
 
-def generar_barras_simple(nombre: str, numero_correlativo: int) -> str:
+def generar_barras_simple(nombre: str, numero_correlativo: int) -> tuple:
     """Genera código de barras para equipamiento simple."""
     abrev = extraer_tres_letras(nombre)
     codigo_id = f"{abrev}{numero_correlativo:04d}"
@@ -472,32 +604,25 @@ def generar_barras_simple(nombre: str, numero_correlativo: int) -> str:
 
 def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str, 
                                     codigo_barras_cpu: str, codigos_perifericos: dict):
-    """
-    Guarda la estructura CPU en varias hojas de Excel:
-      - CPU: datos de la CPU
-      - Periféricos: datos de cada periférico
-      - Software: software instalado
-      - Relaciones: vinculación entre código QR, barras CPU, y barras periféricos
-    """
+    """Guarda la estructura CPU en múltiples hojas."""
     
     excel_path = ARCHIVO_SESION
     
-    # Crear diccionarios para cada hoja
     fila_cpu = {
         "Tipo": "CPU",
-        "Host": estructura_cpu["cpu"]["host"],
-        "No_Serie": estructura_cpu["cpu"]["no_serie"],
-        "Empresa": estructura_cpu["cpu"]["empresa"],
-        "Edificio": estructura_cpu["cpu"]["edificio"],
-        "Area": estructura_cpu["cpu"]["area"],
-        "Estado": estructura_cpu["cpu"]["estado"],
-        "Marca": estructura_cpu["cpu"]["marca"],
-        "Modelo": estructura_cpu["cpu"]["modelo"],
-        "Procesador": estructura_cpu["cpu"]["procesador"],
-        "RAM": estructura_cpu["cpu"]["ram"],
-        "Capacidad_Disco": estructura_cpu["cpu"]["capacidad_disco"],
-        "Tipo_Disco": estructura_cpu["cpu"]["tipo_disco"],
-        "Observaciones": estructura_cpu["cpu"]["observaciones"],
+        "Host": estructura_cpu["cpu"].get("host", ""),
+        "No_Serie": estructura_cpu["cpu"].get("no_serie", ""),
+        "Empresa": estructura_cpu["cpu"].get("empresa", ""),
+        "Edificio": estructura_cpu["cpu"].get("edificio", ""),
+        "Area": estructura_cpu["cpu"].get("area", ""),
+        "Estado": estructura_cpu["cpu"].get("estado", ""),
+        "Marca": estructura_cpu["cpu"].get("marca", ""),
+        "Modelo": estructura_cpu["cpu"].get("modelo", ""),
+        "Procesador": estructura_cpu["cpu"].get("procesador", ""),
+        "RAM": estructura_cpu["cpu"].get("ram", ""),
+        "Capacidad_Disco": estructura_cpu["cpu"].get("capacidad_disco", ""),
+        "Tipo_Disco": estructura_cpu["cpu"].get("tipo_disco", ""),
+        "Observaciones": estructura_cpu["cpu"].get("observaciones", ""),
         "Codigo_QR": codigo_qr,
         "Codigo_Barras_CPU": codigo_barras_cpu,
         "Timestamp": estructura_cpu["timestamp"],
@@ -505,23 +630,21 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
     
     df_cpu = pd.DataFrame([fila_cpu])
     
-    # DataFrame para Software
     fila_software = {
-        "Host_CPU": estructura_cpu["cpu"]["host"],
-        "SO": estructura_cpu["software"]["SO"],
-        "Office": estructura_cpu["software"]["Office"],
-        "Antivirus": estructura_cpu["software"]["Antivirus"],
-        "Lector_PDF": estructura_cpu["software"]["Lector_PDF"],
-        "ERP": estructura_cpu["software"]["ERP"],
-        "Otro_1": estructura_cpu["software"]["Otro1"],
-        "Otro_2": estructura_cpu["software"]["Otro2"],
-        "Otro_3": estructura_cpu["software"]["Otro3"],
+        "Host_CPU": estructura_cpu["cpu"].get("host", ""),
+        "SO": estructura_cpu["software"].get("SO", ""),
+        "Office": estructura_cpu["software"].get("Office", ""),
+        "Antivirus": estructura_cpu["software"].get("Antivirus", ""),
+        "Lector_PDF": estructura_cpu["software"].get("Lector_PDF", ""),
+        "ERP": estructura_cpu["software"].get("ERP", ""),
+        "Otro_1": estructura_cpu["software"].get("Otro1", ""),
+        "Otro_2": estructura_cpu["software"].get("Otro2", ""),
+        "Otro_3": estructura_cpu["software"].get("Otro3", ""),
         "Timestamp": estructura_cpu["timestamp"],
     }
     
     df_software = pd.DataFrame([fila_software])
     
-    # DataFrame para Periféricos
     filas_perifericos = []
     for periferico in estructura_cpu["perifericos"]:
         tipo_periferico = periferico["tipo"]
@@ -529,13 +652,13 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
         codigo_id = codigos_perifericos.get(tipo_periferico, {}).get("codigo_id", "")
         
         fila = {
-            "Host_CPU": estructura_cpu["cpu"]["host"],
+            "Host_CPU": estructura_cpu["cpu"].get("host", ""),
             "Tipo": tipo_periferico,
-            "Modelo": periferico["modelo"],
-            "No_Serie": periferico["no_serie"],
-            "Marca": periferico["marca"],
-            "Estado": periferico["estado"],
-            "Observaciones": periferico["observaciones"],
+            "Modelo": periferico.get("modelo", ""),
+            "No_Serie": periferico.get("no_serie", ""),
+            "Marca": periferico.get("marca", ""),
+            "Estado": periferico.get("estado", ""),
+            "Observaciones": periferico.get("observaciones", ""),
             "Codigo_Barras": codigo_barras,
             "Codigo_ID": codigo_id,
             "Timestamp": estructura_cpu["timestamp"],
@@ -544,7 +667,6 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
     
     df_perifericos = pd.DataFrame(filas_perifericos) if filas_perifericos else pd.DataFrame()
     
-    # DataFrame para Relaciones (vinculación QR-Barras)
     filas_relaciones = [{"Codigo_QR": codigo_qr, "Codigo_Barras_CPU": codigo_barras_cpu}]
     for tipo_periferico, datos in codigos_perifericos.items():
         filas_relaciones.append({
@@ -554,53 +676,41 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
         })
     df_relaciones = pd.DataFrame(filas_relaciones)
     
-    # Escribir a Excel
     try:
         if os.path.exists(excel_path):
-            # Si el archivo existe, leer las hojas existentes y concatenar
             with pd.ExcelWriter(excel_path, mode="a", engine="openpyxl", 
                               if_sheet_exists="overlay") as writer:
-                # CPU
                 if "CPU" in writer.book.sheetnames:
                     df_existente = pd.read_excel(excel_path, sheet_name="CPU")
                     df_cpu = pd.concat([df_existente, df_cpu], ignore_index=True)
                 df_cpu.to_excel(writer, sheet_name="CPU", index=False)
                 
-                # Software
                 if not df_software.empty:
                     if "Software" in writer.book.sheetnames:
                         df_existente = pd.read_excel(excel_path, sheet_name="Software")
                         df_software = pd.concat([df_existente, df_software], ignore_index=True)
                     df_software.to_excel(writer, sheet_name="Software", index=False)
                 
-                # Periféricos
                 if not df_perifericos.empty:
                     if "Perifericos" in writer.book.sheetnames:
                         df_existente = pd.read_excel(excel_path, sheet_name="Perifericos")
                         df_perifericos = pd.concat([df_existente, df_perifericos], ignore_index=True)
                     df_perifericos.to_excel(writer, sheet_name="Perifericos", index=False)
                 
-                # Relaciones
                 if "Relaciones" in writer.book.sheetnames:
                     df_existente = pd.read_excel(excel_path, sheet_name="Relaciones")
                     df_relaciones = pd.concat([df_existente, df_relaciones], ignore_index=True)
                 df_relaciones.to_excel(writer, sheet_name="Relaciones", index=False)
         else:
-            # Si no existe, crear nuevo
             with pd.ExcelWriter(excel_path, mode="w", engine="openpyxl") as writer:
                 df_cpu.to_excel(writer, sheet_name="CPU", index=False)
-                
                 if not df_software.empty:
                     df_software.to_excel(writer, sheet_name="Software", index=False)
-                
                 if not df_perifericos.empty:
                     df_perifericos.to_excel(writer, sheet_name="Perifericos", index=False)
-                
                 df_relaciones.to_excel(writer, sheet_name="Relaciones", index=False)
     except Exception as e:
         print(f"   ❌ Error guardando en Excel: {e}")
-        import traceback
-        traceback.print_exc()
 
 
 def guardar_estructura_simple_en_excel(estructura: dict, codigo_barras: str, codigo_id: str):
@@ -610,15 +720,15 @@ def guardar_estructura_simple_en_excel(estructura: dict, codigo_barras: str, cod
     
     fila = {
         "Tipo": estructura["tipo_inventario"],
-        "Nombre": estructura["datos"]["nombre"],
-        "No_Serie": estructura["datos"]["no_serie"],
-        "Marca": estructura["datos"]["marca"],
-        "Modelo": estructura["datos"]["modelo"],
-        "Empresa": estructura["datos"]["empresa"],
-        "Edificio": estructura["datos"]["edificio"],
-        "Area": estructura["datos"]["area"],
-        "Estado": estructura["datos"]["estado"],
-        "Observaciones": estructura["datos"]["observaciones"],
+        "Nombre": estructura["datos"].get("nombre", ""),
+        "No_Serie": estructura["datos"].get("no_serie", ""),
+        "Marca": estructura["datos"].get("marca", ""),
+        "Modelo": estructura["datos"].get("modelo", ""),
+        "Empresa": estructura["datos"].get("empresa", ""),
+        "Edificio": estructura["datos"].get("edificio", ""),
+        "Area": estructura["datos"].get("area", ""),
+        "Estado": estructura["datos"].get("estado", ""),
+        "Observaciones": estructura["datos"].get("observaciones", ""),
         "Codigo_Barras": codigo_barras,
         "Codigo_ID": codigo_id,
         "Timestamp": estructura["timestamp"],
@@ -628,26 +738,20 @@ def guardar_estructura_simple_en_excel(estructura: dict, codigo_barras: str, cod
     
     try:
         if os.path.exists(excel_path):
-            # Leer hoja "Otros" si existe
             try:
                 df_existente = pd.read_excel(excel_path, sheet_name="Otros")
                 df_final = pd.concat([df_existente, df], ignore_index=True)
             except:
-                # Si la hoja no existe, solo usar el nuevo df
                 df_final = df
             
-            # Escribir usando overlay para no perder otras hojas
             with pd.ExcelWriter(excel_path, mode="a", engine="openpyxl", 
                               if_sheet_exists="overlay") as writer:
                 df_final.to_excel(writer, sheet_name="Otros", index=False)
         else:
-            # Si no existe, crear nuevo
             with pd.ExcelWriter(excel_path, mode="w", engine="openpyxl") as writer:
                 df.to_excel(writer, sheet_name="Otros", index=False)
     except Exception as e:
         print(f"   ❌ Error guardando en Excel: {e}")
-        import traceback
-        traceback.print_exc()
 
 
 # ──────────────────────────────────────────────
@@ -668,7 +772,7 @@ def enviar_correo(archivos_adjuntos: list, total_registros: int):
         f"Registros capturados: {total_registros}\n"
         f"Archivo adjunto: {ARCHIVO_SESION}\n\n"
         f"Este correo será procesado automáticamente por sync_bd.py.\n"
-        f"— Sistema BI · Inventario v2.0"
+        f"— Sistema BI · Inventario v2.1"
     )
 
     for archivo in archivos_adjuntos:
@@ -696,11 +800,7 @@ def enviar_correo(archivos_adjuntos: list, total_registros: int):
             smtp.login(EMAIL_USER, EMAIL_PASS)
             smtp.send_message(msg)
         print(f"✅ Correo enviado con asunto [{ASUNTO_TRIGGER}]")
-        print(f"   Destinatarios: {', '.join(DESTINATARIOS)}")
         return True
-    except smtplib.SMTPAuthenticationError:
-        print("❌ Error de autenticación SMTP.")
-        return False
     except Exception as e:
         print(f"❌ Error al enviar: {e}")
         return False
@@ -718,44 +818,51 @@ def ejecutar_sistema():
     numero_correlativo = 1
 
     print("\n" + "=" * 60)
-    print("  SISTEMA DE INVENTARIO QR v2.0")
+    print("  SISTEMA DE INVENTARIO QR v2.1")
     print("  Termux — Captura de Equipamiento")
     print("=" * 60)
 
-    # Cargar datos de Excel
     try:
         xls = pd.ExcelFile(archivo_excel)
         empresas = pd.read_excel(xls, "Empresa")["Empresa"].dropna().tolist()
         areas = pd.read_excel(xls, "Areas")["Area"].dropna().tolist()
     except FileNotFoundError:
-        print("❌ No se encontró inventario.xlsx. Crea uno primero con las hojas:")
-        print("   - Empresa")
-        print("   - Areas")
+        print("❌ No se encontró inventario.xlsx. Crea uno primero.")
         return
     except Exception as e:
         print(f"❌ Error cargando Excel: {e}")
         return
 
-    # Bucle de captura
+    # Bucle principal
     while True:
-        try:
-            # Menú principal
-            tipo_seleccionado = seleccionar_opcion(
-                TIPOS_EQUIPAMIENTO,
-                "\n🎯 ¿Qué deseas inventariar?"
-            )
+        tipo_seleccionado = seleccionar_opcion(
+            TIPOS_EQUIPAMIENTO,
+            "\n🎯 ¿Qué deseas inventariar?"
+        )
+        
+        if tipo_seleccionado is None:
+            # Usuario seleccionó "Volver" (que no existe en menú principal)
+            break
 
-            if tipo_seleccionado == "CPU":
-                # Flujo CPU
+        if tipo_seleccionado == "CPU":
+            # Flujo CPU
+            while True:
                 estructura = capturar_cpu(empresas, areas)
                 
-                # Generar QR único para toda la estructura
+                if estructura is None:
+                    break  # Volver al menú principal
+                
+                # Mostrar resumen
+                if not mostrar_resumen_cpu(estructura):
+                    continue  # Volver a registrar esta CPU
+                
+                # Generar QR
                 ruta_qr, contenido_qr, codigo_qr = generar_qr_cpu(estructura, numero_correlativo)
                 archivos_sesion.append(ruta_qr)
                 
                 # Generar código de barras para la CPU
                 ruta_barras_cpu, codigo_barras_cpu = generar_barras_objeto(
-                    "CPU", estructura["cpu"]["no_serie"], numero_correlativo
+                    "CPU", numero_correlativo
                 )
                 archivos_sesion.append(ruta_barras_cpu)
                 
@@ -764,7 +871,6 @@ def ejecutar_sistema():
                 for periferico in estructura["perifericos"]:
                     ruta_barras_periferico, codigo_id = generar_barras_objeto(
                         periferico["tipo"], 
-                        periferico["no_serie"],
                         numero_correlativo
                     )
                     archivos_sesion.append(ruta_barras_periferico)
@@ -783,57 +889,49 @@ def ejecutar_sistema():
                 
                 total_registros += 1 + len(estructura["perifericos"])
                 numero_correlativo += 1
-                
-            elif tipo_seleccionado == "Finalizar Inventario":
-                # Opción para terminar
-                if total_registros == 0:
-                    print("\n⚠️  No hay registros capturados aún.")
-                    continue
-                
-                print(f"\n{'=' * 60}")
-                print(f"  ✅ FINALIZANDO SESIÓN")
-                print(f"  Total de objetos inventariados: {total_registros}")
-                print(f"{'=' * 60}")
-                break
-                
-            else:
-                # Flujo equipamiento simple
-                estructura = capturar_equipo_simple(empresas, areas)
-                
-                # Generar código de barras
-                ruta_barras, codigo_id = generar_barras_simple(
-                    estructura["datos"]["nombre"],
-                    numero_correlativo
-                )
-                archivos_sesion.append(ruta_barras)
-                
-                # Guardar en Excel
-                guardar_estructura_simple_en_excel(estructura, ruta_barras, codigo_id)
-                
-                total_registros += 1
-                numero_correlativo += 1
+                print(f"\n✅ CPU registrada y guardada.")
+                break  # Volver al menú principal
 
-        except (IndexError, ValueError) as e:
-            print(f"⚠️  Entrada inválida: {e}. Intenta de nuevo.")
-        except KeyboardInterrupt:
-            print("\n⚠️  Interrumpido.")
+        else:
+            # Flujo equipamiento simple
+            estructura = capturar_equipo_simple(empresas, areas)
+            
+            if estructura is None:
+                continue  # Volver al menú principal
+            
+            # Generar código de barras
+            ruta_barras, codigo_id = generar_barras_simple(
+                estructura["datos"]["nombre"],
+                numero_correlativo
+            )
+            archivos_sesion.append(ruta_barras)
+            
+            # Guardar en Excel
+            guardar_estructura_simple_en_excel(estructura, ruta_barras, codigo_id)
+            
+            total_registros += 1
+            numero_correlativo += 1
+            print(f"✅ {estructura['tipo_inventario']} registrado y guardado.")
+
+        # Preguntar si continuar
+        continuar = input("\n¿Deseas registrar más equipamiento? (S/N): ").strip().upper()
+        if continuar != "S":
             break
-        except Exception as e:
-            print(f"❌ Error inesperado: {e}")
-            import traceback
-            traceback.print_exc()
 
-    # ─────────────────────────────────
+    # ─────────────────────────────
     # CIERRE Y ENVÍO
-    # ─────────────────────────────────
+    # ─────────────────────────────
     
     if total_registros == 0:
-        print("\nℹ️  Sin registros capturados. Fin.")
+        print("\nℹ️  Sin registros capturados.")
         return
 
-    print(f"\n✅ Preparando para enviar {total_registros} registros...")
-    
-    # Esperar a que el usuario confirme antes de enviar
+    print(f"\n{'=' * 60}")
+    print(f"  ✅ SESIÓN COMPLETADA")
+    print(f"  Total de objetos inventariados: {total_registros}")
+    print(f"  Archivo: {ARCHIVO_SESION}")
+    print(f"{'=' * 60}")
+
     confirmacion = input("\n¿Deseas enviar los datos? (S/N): ").strip().upper()
     
     if confirmacion != "S":
@@ -841,26 +939,18 @@ def ejecutar_sistema():
         print(f"   Los datos se guardaron en: {ARCHIVO_SESION}")
         return
 
-    # Enviar correo
     archivos_adjuntos = archivos_sesion + [ARCHIVO_SESION]
     exito = enviar_correo(archivos_adjuntos, total_registros)
 
     if exito:
         print(f"\n{'=' * 60}")
         print(f"  ✅ INVENTARIO ENVIADO EXITOSAMENTE")
-        print(f"  Total de objetos: {total_registros}")
-        print(f"  Archivo: {ARCHIVO_SESION}")
         print(f"{'=' * 60}")
         print("\n🏁 ¡Proceso completado!")
         print("   sync_bd.py procesará los datos automáticamente.")
     else:
         print("\n⚠️  El archivo se guardó pero no se pudo enviar el correo.")
-        print(f"   Guarda el archivo {ARCHIVO_SESION} para enviarlo manualmente.")
 
-
-# ──────────────────────────────────────────────
-# ENTRY POINT
-# ──────────────────────────────────────────────
 
 if __name__ == "__main__":
     try:
