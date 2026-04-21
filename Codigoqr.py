@@ -84,8 +84,8 @@ from barcode.writer import ImageWriter
 # ──────────────────────────────────────────────
 # CONFIGURACIÓN
 # ──────────────────────────────────────────────
-archivo_excel  = '/home/christian/Documentos/proyectos_bi/inventario.xlsx'
-carpeta_salida = '/home/christian/Documentos/proyectos_bi/codigos_generados'
+archivo_excel  = '~/storage/downloads/inventario.xlsx'
+carpeta_salida = '~/storage/downloads/codigos_generados'
 
 FECHA_HOY      = datetime.now().strftime("%Y%m%d")
 ARCHIVO_SESION = f"INVENTARIO{FECHA_HOY}.xlsx"
