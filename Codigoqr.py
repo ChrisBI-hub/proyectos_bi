@@ -650,33 +650,41 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
     df_software = pd.DataFrame([fila_software])
     
     filas_perifericos = []
+    contadores_tipo = {}
     for periferico in estructura_cpu["perifericos"]:
         tipo_periferico = periferico["tipo"]
-        codigo_barras = codigos_perifericos.get(tipo_periferico, {}).get("barras", "")
-        codigo_id = codigos_perifericos.get(tipo_periferico, {}).get("codigo_id", "")
+        contadores_tipo[tipo_periferico] = contadores_tipo.get(tipo_periferico, 0) + 1
+        sufijo = contadores_tipo[tipo_periferico]
+        clave = f"{tipo_periferico}_{sufijo}"
+
+        datos_codigo = codigos_perifericos.get(clave, {})
+        codigo_barras = datos_codigo.get("barras", "")
+        codigo_id     = datos_codigo.get("codigo_id", "")
         
         fila = {
-            "Host_CPU": estructura_cpu["cpu"].get("host", ""),
-            "Tipo": tipo_periferico,
-            "Modelo": periferico.get("modelo", ""),
-            "No_Serie": periferico.get("no_serie", ""),
-            "Marca": periferico.get("marca", ""),
-            "Estado": periferico.get("estado", ""),
+            "Host_CPU":      estructura_cpu["cpu"].get("host", ""),
+            "Tipo":          tipo_periferico,
+            "Modelo":        periferico.get("modelo", ""),
+            "No_Serie":      periferico.get("no_serie", ""),
+            "Marca":         periferico.get("marca", ""),
+            "Estado":        periferico.get("estado", ""),
             "Observaciones": periferico.get("observaciones", ""),
-            "Codigo_Barras": codigo_id,
-            "Codigo_ID": codigo_id,
-            "Timestamp": estructura_cpu["timestamp"],
+            "Codigo_Barras": codigo_barras,
+            "Codigo_ID":     codigo_id,
+            "Timestamp":     estructura_cpu["timestamp"],
         }
         filas_perifericos.append(fila)
     
     df_perifericos = pd.DataFrame(filas_perifericos) if filas_perifericos else pd.DataFrame()
     
-    filas_relaciones = [{"Codigo_QR": codigo_qr, "Codigo_Barras_CPU": codigo_barras_cpu}]
-    for tipo_periferico, datos in codigos_perifericos.items():
+    filas_relaciones = [{"Codigo_QR": codigo_qr, "Codigo_Barras_CPU": codigo_barras_cpu,
+                         "Tipo_Periferico": None, "Codigo_Barras_Periferico": None}]
+    for clave, datos in codigos_perifericos.items():
         filas_relaciones.append({
-            "Codigo_QR": codigo_qr,
-            "Tipo_Periferico": tipo_periferico,
-            "Codigo_Barras_Periferico": datos.get("codigo_id", "")
+            "Codigo_QR":               codigo_qr,
+            "Codigo_Barras_CPU":        codigo_barras_cpu,
+            "Tipo_Periferico":          datos.get("tipo", ""),
+            "Codigo_Barras_Periferico": datos.get("barras", ""),
         })
     df_relaciones = pd.DataFrame(filas_relaciones)
     
@@ -871,16 +879,28 @@ def ejecutar_sistema():
                 archivos_sesion.append(ruta_barras_cpu)
                 
                 # Generar códigos de barras para cada periférico
+                # FIX: Usamos lista de (tipo, datos) para soportar 2 del mismo tipo (ej: 2 monitores)
+                # Antes (bug): dict con clave=tipo → el segundo monitor sobreescribía al primero
+                # Ahora (fix): contador por tipo para generar IDs únicos (MON0001, MON0002, etc.)
                 codigos_perifericos = {}
+                contadores_tipo = {}
                 for periferico in estructura["perifericos"]:
+                    tipo_p = periferico["tipo"]
+                    contadores_tipo[tipo_p] = contadores_tipo.get(tipo_p, 0) + 1
+                    # Código único: tipo + correlativo_global + instancia del tipo
+                    sufijo = contadores_tipo[tipo_p]
                     ruta_barras_periferico, codigo_id = generar_barras_objeto(
-                        periferico["tipo"], 
-                        numero_correlativo
+                        tipo_p,
+                        numero_correlativo * 100 + sufijo  # garantiza unicidad
                     )
                     archivos_sesion.append(ruta_barras_periferico)
-                    codigos_perifericos[periferico["tipo"]] = {
+                    # Guardamos por clave única tipo+sufijo para relacionar con la fila del Excel
+                    clave = f"{tipo_p}_{sufijo}"
+                    codigos_perifericos[clave] = {
+                        "tipo": tipo_p,
                         "barras": ruta_barras_periferico,
-                        "codigo_id": codigo_id
+                        "codigo_id": codigo_id,
+                        "instancia": sufijo,
                     }
                 
                 # Guardar en Excel

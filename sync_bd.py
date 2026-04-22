@@ -159,18 +159,25 @@ def insertar_dataframe_sql(df: pd.DataFrame, tabla: str, schema: str = None,
 
         print(f"   📤 Insertando {len(df_nuevos)} fila(s) en [{tabla}]...")
         tabla_nombre = tabla.split(".")[-1]
-        df_nuevos.to_sql(
-            name=tabla_nombre,
-            con=engine,
-            schema=schema,
-            if_exists="append",
-            index=False
-        )
+
+        # FIX: engine.begin() garantiza commit() automático en SQLAlchemy 2.0+
+        # Antes (bug): con=engine → la transacción nunca se confirmaba (rollback silencioso)
+        # Ahora (fix):  with engine.begin() as conn → commit al salir del bloque
+        with engine.begin() as conn:
+            df_nuevos.to_sql(
+                name=tabla_nombre,
+                con=conn,
+                schema=schema,
+                if_exists="append",
+                index=False
+            )
         print(f"   ✅ {len(df_nuevos)} fila(s) insertada(s) correctamente en [{tabla}]")
         return True
 
     except Exception as e:
         print(f"   ❌ Error al insertar en {tabla}: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
