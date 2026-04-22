@@ -733,7 +733,7 @@ def guardar_estructura_simple_en_excel(estructura: dict, codigo_barras: str, cod
         "Area": estructura["datos"].get("area", ""),
         "Estado": estructura["datos"].get("estado", ""),
         "Observaciones": estructura["datos"].get("observaciones", ""),
-        "Codigo_Barras": codigo_barras,
+        "Codigo_Barras": codigo_id,
         "Codigo_ID": codigo_id,
         "Timestamp": estructura["timestamp"],
     }
