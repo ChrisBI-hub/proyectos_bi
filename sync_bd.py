@@ -227,6 +227,7 @@ def procesar_archivo_excel(xlsx_bytes: bytes) -> dict:
 def insertar_estructura_cpu(hojas: dict, engine) -> bool:
     exito = True
 
+    # ── 1. CPU principal ─────────────────────────────────────────────────────
     if "cpu" in hojas and not hojas["cpu"].empty:
         print("\n   🖥️  Procesando CPU...")
         df_cpu = hojas["cpu"].drop(columns=["Tipo"], errors="ignore")
@@ -236,22 +237,54 @@ def insertar_estructura_cpu(hojas: dict, engine) -> bool:
             columna_id="Codigo_Barras_CPU"
         )
 
+    # ── 2. Obtener TODOS los hosts que existen en Inventario.CPU ─────────────
+    # Se consulta DESPUÉS de la inserción anterior para incluir los recién
+    # agregados. Las tablas hijas solo se insertan si su Host_CPU ya existe
+    # en la tabla padre, evitando la violación de FK.
+    hosts_en_bd = obtener_ids_existentes(engine, TABLAS_SQL["CPU"]["tabla_principal"], "Host")
+
+    # ── 3. Software ──────────────────────────────────────────────────────────
     if "software" in hojas and not hojas["software"].empty:
         print("\n   📦 Procesando Software...")
-        exito &= insertar_dataframe_sql(
-            hojas["software"], TABLAS_SQL["CPU"]["tabla_software"],
-            schema="Inventario", engine=engine,
-            columna_id="Host_CPU"
-        )
+        df_sw = hojas["software"].copy()
 
+        # Filtrar filas cuyo Host_CPU no existe en Inventario.CPU
+        if "Host_CPU" in df_sw.columns:
+            sin_padre = df_sw[~df_sw["Host_CPU"].isin(hosts_en_bd)]
+            if not sin_padre.empty:
+                print(f"   ⚠️  Software: {len(sin_padre)} fila(s) omitida(s) — "
+                      f"Host_CPU no existe en CPU: {sin_padre['Host_CPU'].unique().tolist()}")
+            df_sw = df_sw[df_sw["Host_CPU"].isin(hosts_en_bd)]
+
+        if not df_sw.empty:
+            # Para Software usamos Host_CPU como clave de dedup (1 fila por host)
+            exito &= insertar_dataframe_sql(
+                df_sw, TABLAS_SQL["CPU"]["tabla_software"],
+                schema="Inventario", engine=engine,
+                columna_id="Host_CPU"
+            )
+
+    # ── 4. Periféricos ───────────────────────────────────────────────────────
     if "perifericos" in hojas and not hojas["perifericos"].empty:
         print("\n   🖱️  Procesando Periféricos...")
-        exito &= insertar_dataframe_sql(
-            hojas["perifericos"], TABLAS_SQL["CPU"]["tabla_perifericos"],
-            schema="Inventario", engine=engine,
-            columna_id="Codigo_ID"
-        )
+        df_per = hojas["perifericos"].copy()
 
+        # Filtrar filas cuyo Host_CPU no existe en Inventario.CPU
+        if "Host_CPU" in df_per.columns:
+            sin_padre = df_per[~df_per["Host_CPU"].isin(hosts_en_bd)]
+            if not sin_padre.empty:
+                print(f"   ⚠️  Periféricos: {len(sin_padre)} fila(s) omitida(s) — "
+                      f"Host_CPU no existe en CPU: {sin_padre['Host_CPU'].unique().tolist()}")
+            df_per = df_per[df_per["Host_CPU"].isin(hosts_en_bd)]
+
+        if not df_per.empty:
+            exito &= insertar_dataframe_sql(
+                df_per, TABLAS_SQL["CPU"]["tabla_perifericos"],
+                schema="Inventario", engine=engine,
+                columna_id="Codigo_ID"
+            )
+
+    # ── 5. Relaciones ────────────────────────────────────────────────────────
     if "relaciones" in hojas and not hojas["relaciones"].empty:
         print("\n   🔗 Procesando Relaciones...")
         exito &= insertar_dataframe_sql(

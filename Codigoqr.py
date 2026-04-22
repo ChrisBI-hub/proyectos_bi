@@ -114,9 +114,17 @@ PERIFERICOS_DISPONIBLES = ["Monitor", "Teclado", "Mouse", "Webcam", "Auriculares
 TIPOS_EQUIPAMIENTO = [
     "CPU",
     "Silla",
+    "Escritorio",
     "Mesa",
+    "Pizarra",
     "Micrófono",
-    "Periférico Individual"
+    "No-Break",
+    "Ventilador",
+    "Aire Acondicionado",
+    "Archivero",
+    "Librero",
+    "Telefono fijo",
+    "Otros"
 ]
 
 os.makedirs(carpeta_salida, exist_ok=True)
