@@ -112,18 +112,19 @@ ESTADOS = ["Mal estado", "Futuro mantenimiento", "Buen estado", "Equipo nuevo"]
 TIPOS_DISCO = ["HDD", "SSD"]
 PERIFERICOS_DISPONIBLES = ["Monitor", "Teclado", "Mouse", "Webcam", "Auriculares", "Micrófono", "Bocinas"]
 TIPOS_EQUIPAMIENTO = [
-    "CPU",
-    "Silla",
-    "Escritorio",
-    "Mesa",
-    "Pizarra",
-    "Micrófono",
-    "No-Break",
-    "Ventilador",
     "Aire Acondicionado",
     "Archivero",
+    "CPU",
+    "Escritorio",
     "Librero",
+    "Mesa",
+    "Micrófono",
+    "mini Split",
+    "No-Break",
+    "Pizarra",
+    "Silla",
     "Telefono fijo",
+    "Ventilador",
     "Otros"
 ]
 
