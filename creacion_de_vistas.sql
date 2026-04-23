@@ -149,7 +149,11 @@ BEGIN
         Empresa NVARCHAR(200),
         Edificio NVARCHAR(100),
         Area NVARCHAR(200),
+        Ubicacion_En_Edificio NVARCHAR(250),
         Estado NVARCHAR(50),
+        Tipo_Sensor NVARCHAR(100),
+        Resolucion_Pantalla NVARCHAR(50),
+        Sistema_Operativo NVARCHAR(100),
         Observaciones NVARCHAR(MAX),
         Codigo_Barras NVARCHAR(255),
         Codigo_ID NVARCHAR(100) UNIQUE,
@@ -211,6 +215,20 @@ ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Modelo        NVARCHAR(200);
 ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Empresa       NVARCHAR(200);
 ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Edificio      NVARCHAR(100);
 ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Area          NVARCHAR(200);
+
+IF COL_LENGTH('Inventario.Otros_Equipos', 'Ubicacion_En_Edificio') IS NULL
+    ALTER TABLE Inventario.Otros_Equipos ADD Ubicacion_En_Edificio NVARCHAR(250);
+IF COL_LENGTH('Inventario.Otros_Equipos', 'Tipo_Sensor') IS NULL
+    ALTER TABLE Inventario.Otros_Equipos ADD Tipo_Sensor NVARCHAR(100);
+IF COL_LENGTH('Inventario.Otros_Equipos', 'Resolucion_Pantalla') IS NULL
+    ALTER TABLE Inventario.Otros_Equipos ADD Resolucion_Pantalla NVARCHAR(50);
+IF COL_LENGTH('Inventario.Otros_Equipos', 'Sistema_Operativo') IS NULL
+    ALTER TABLE Inventario.Otros_Equipos ADD Sistema_Operativo NVARCHAR(100);
+
+ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Ubicacion_En_Edificio NVARCHAR(250);
+ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Tipo_Sensor           NVARCHAR(100);
+ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Resolucion_Pantalla   NVARCHAR(50);
+ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Sistema_Operativo     NVARCHAR(100);
 PRINT '   ✅ Inventario.Otros_Equipos — columnas ampliadas.';
 GO
 
@@ -296,6 +314,19 @@ GO
 PRINT 'Vista Inventario.vw_Resumen_Empresa creada/actualizada.';
 GO
 
+IF OBJECT_ID('Inventario.vw_Sensores', 'V') IS NOT NULL
+    DROP VIEW Inventario.vw_Sensores;
+GO
+CREATE VIEW Inventario.vw_Sensores AS
+SELECT
+    ID, Tipo, Nombre, Tipo_Sensor, Empresa, Edificio, Area,
+    Ubicacion_En_Edificio, Estado, Codigo_ID, Timestamp
+FROM Inventario.Otros_Equipos
+WHERE Tipo = 'Sensores';
+GO
+PRINT 'Vista Inventario.vw_Sensores creada/actualizada.';
+GO
+
 -- ============================================================
 -- 8. STORED PROCEDURES
 -- ============================================================
@@ -327,7 +358,14 @@ BEGIN
     SELECT 'CPU' AS Tipo, Host AS Nombre, No_Serie, Marca, Modelo, Estado, Timestamp
     FROM Inventario.CPU WHERE Edificio = @Edificio
     UNION ALL
-    SELECT Tipo, Nombre, No_Serie, Marca, Modelo, Estado, Timestamp
+    SELECT
+        Tipo,
+        CASE
+            WHEN Tipo = 'Sensores' AND ISNULL(Tipo_Sensor, '') <> ''
+                THEN CONCAT(Nombre, ' (', Tipo_Sensor, ')')
+            ELSE Nombre
+        END AS Nombre,
+        No_Serie, Marca, Modelo, Estado, Timestamp
     FROM Inventario.Otros_Equipos WHERE Edificio = @Edificio
     ORDER BY Tipo, Nombre;
 END;

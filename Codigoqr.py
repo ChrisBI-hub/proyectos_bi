@@ -111,6 +111,7 @@ EDIFICIOS = ["NORTE 180", "NORTE 182", "PATIO SEC"]
 ESTADOS = ["Mal estado", "Futuro mantenimiento", "Buen estado", "Equipo nuevo"]
 TIPOS_DISCO = ["HDD", "SSD"]
 PERIFERICOS_DISPONIBLES = ["Monitor", "Teclado", "Mouse", "Webcam", "Auriculares", "Micrófono", "Bocinas"]
+TIPOS_SENSORES = ["Sensor de humo", "Sensor de movimiento", "Sensor de wifi y red"]
 TIPOS_EQUIPAMIENTO = [
     "CPU",
     "Aire Acondicionado",
@@ -123,6 +124,7 @@ TIPOS_EQUIPAMIENTO = [
     "Mini Split",
     "No-Break",
     "Pizarra",
+    "Sensores",
     "Silla",
     "Telefono fijo",
     "Ventilador",
@@ -521,6 +523,31 @@ def capturar_equipo_simple(empresas: list, areas: list) -> dict | None:
     if area is None:
         return None
     
+    tipo_sensor = ""
+    ubicacion_en_edificio = ""
+    resolucion_pantalla = ""
+    sistema_operativo = ""
+
+    if tipo == "Laptop":
+        print("\n💻 DATOS DE LAPTOP:")
+        resolucion_pantalla = input_seguro("Resolución de pantalla (ej: 1920x1080): ", permitir_vacio=True)
+        if resolucion_pantalla is None:
+            return None
+
+        sistema_operativo = input_seguro("Sistema Operativo (ej: Windows 11): ", permitir_vacio=True)
+        if sistema_operativo is None:
+            return None
+
+    if tipo == "Sensores":
+        print("\n🛰️  DATOS DE SENSOR:")
+        tipo_sensor = seleccionar_opcion(TIPOS_SENSORES, "Tipo de sensor:", permitir_volver=True)
+        if tipo_sensor is None:
+            return None
+
+        ubicacion_en_edificio = input_seguro("Ubicación en el edificio (ej: Pasillo PB, Site, Sala de juntas): ")
+        if ubicacion_en_edificio is None:
+            return None
+    
     print("\n📊 Estado Físico:")
     estado = seleccionar_opcion(ESTADOS, permitir_volver=False)
     if estado is None:
@@ -543,7 +570,11 @@ def capturar_equipo_simple(empresas: list, areas: list) -> dict | None:
             "empresa": empresa,
             "edificio": edificio,
             "area": area,
+            "ubicacion_en_edificio": ubicacion_en_edificio,
             "estado": estado,
+            "tipo_sensor": tipo_sensor,
+            "resolucion_pantalla": resolucion_pantalla,
+            "sistema_operativo": sistema_operativo,
             "observaciones": observaciones,
         }
     }
@@ -749,7 +780,11 @@ def guardar_estructura_simple_en_excel(estructura: dict, codigo_barras: str, cod
         "Empresa": estructura["datos"].get("empresa", ""),
         "Edificio": estructura["datos"].get("edificio", ""),
         "Area": estructura["datos"].get("area", ""),
+        "Ubicacion_En_Edificio": estructura["datos"].get("ubicacion_en_edificio", ""),
         "Estado": estructura["datos"].get("estado", ""),
+        "Tipo_Sensor": estructura["datos"].get("tipo_sensor", ""),
+        "Resolucion_Pantalla": estructura["datos"].get("resolucion_pantalla", ""),
+        "Sistema_Operativo": estructura["datos"].get("sistema_operativo", ""),
         "Observaciones": estructura["datos"].get("observaciones", ""),
         "Codigo_Barras": codigo_id,
         "Codigo_ID": codigo_id,
