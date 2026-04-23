@@ -101,9 +101,9 @@ ASUNTO_TRIGGER = "ACTUALIZACION_BASE_DE_DATOS"
 
 DESTINATARIOS  = [
     "ccarbajal@abcsc.mx",
-    "myanez@abcsc.mx",
-    "sgonzalez@abcsc.mx",
-    "ymontoya@abcsc.mx",
+#    "myanez@abcsc.mx",
+#    "sgonzalez@abcsc.mx",
+#    "ymontoya@abcsc.mx",
     "reportes.bi@abcsc.mx",
 ]
 
