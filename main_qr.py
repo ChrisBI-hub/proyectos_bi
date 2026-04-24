@@ -5,7 +5,7 @@ Orquestador principal del sistema de inventario QR.
 Lanza los tres módulos en hilos paralelos:
 
   ┌─────────────────────────────────────────────────────────────┐
-  │  Hilo 1 → sync_bd.py        Correo → SQL Server  (60 s)    │
+  │  Hilo 1 → sync_bd.py        Correo → IDs → SQL Server      │
   │  Hilo 2 → sinc_qr_drive.py  Correo → Drive       (60 s)    │
   │  Hilo 3 → qr_printer.py     Drive  → PDF → Impresora (1 h) │
   └─────────────────────────────────────────────────────────────┘
@@ -127,6 +127,7 @@ def main():
 ║  sync_bd  │  sinc_qr_drive  │  qr_printer            ║
 ╚══════════════════════════════════════════════════════╝"""
     print(banner)
+    log("main", "SYNC_BD asigna IDs y normaliza el inventario en esta máquina antes de subirlo.")
     log("main", f"Modo: {'--once (una sola vez)' if args.once else 'continuo (Ctrl+C para detener)'}\n")
 
     # Guardar definición de cada hilo para poder relanzarlos si caen

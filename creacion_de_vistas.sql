@@ -1,393 +1,221 @@
--- ============================================================
--- SCRIPTS SQL PARA CREAR TABLAS v2.1
--- Ejecutar en SQL Server ANTES de usar sync_bd.py
--- v2.1: Columnas de texto ampliadas para rutas de archivo
--- ============================================================
-
 USE BI;
 GO
 
--- ============================================================
--- 1. TABLA PRINCIPAL: CPU
--- ============================================================
-IF OBJECT_ID('Inventario.CPU', 'U') IS NULL
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'Inventario')
 BEGIN
-    CREATE TABLE Inventario.CPU (
-        ID INT PRIMARY KEY IDENTITY(1,1),
-        Host NVARCHAR(100) NOT NULL UNIQUE,
-        No_Serie NVARCHAR(100) NOT NULL,
-        Empresa NVARCHAR(200),
-        Edificio NVARCHAR(100),
-        Area NVARCHAR(200),
-        Estado NVARCHAR(50),
-        Marca NVARCHAR(100),
-        Modelo NVARCHAR(100),
-        Procesador NVARCHAR(150),
-        RAM NVARCHAR(50),
-        Capacidad_Disco NVARCHAR(50),
-        Tipo_Disco NVARCHAR(20),
-        Observaciones NVARCHAR(MAX),
-        Codigo_QR NVARCHAR(500),
-        Codigo_Barras_CPU NVARCHAR(255) UNIQUE,
-        Timestamp DATETIME DEFAULT GETDATE(),
-        Fecha_Creacion DATETIME DEFAULT GETDATE(),
-        Fecha_Modificacion DATETIME DEFAULT GETDATE()
-    );
-
-    CREATE INDEX idx_CPU_Host ON Inventario.CPU(Host);
-    CREATE INDEX idx_CPU_Empresa ON Inventario.CPU(Empresa);
-    CREATE INDEX idx_CPU_Edificio ON Inventario.CPU(Edificio);
-    
-    PRINT 'Tabla Inventario.CPU creada exitosamente.';
+    EXEC('CREATE SCHEMA Inventario');
 END
-ELSE
-    PRINT 'Tabla Inventario.CPU ya existe (se aplicarán ALTER si es necesario).';
 GO
 
--- ============================================================
--- 2. TABLA DE SOFTWARE INSTALADO EN CPU
--- ============================================================
-IF OBJECT_ID('Inventario.CPU_Software', 'U') IS NULL
-BEGIN
-    CREATE TABLE Inventario.CPU_Software (
-        ID INT PRIMARY KEY IDENTITY(1,1),
-        Host_CPU NVARCHAR(100) NOT NULL,
-        SO NVARCHAR(100),
-        Office NVARCHAR(100),
-        Antivirus NVARCHAR(100),
-        Lector_PDF NVARCHAR(100),
-        ERP NVARCHAR(100),
-        Otro_1 NVARCHAR(100),
-        Otro_2 NVARCHAR(100),
-        Otro_3 NVARCHAR(100),
-        Timestamp DATETIME DEFAULT GETDATE(),
-        Fecha_Creacion DATETIME DEFAULT GETDATE(),
-        
-        CONSTRAINT FK_CPU_Software_Host 
-            FOREIGN KEY (Host_CPU) 
-            REFERENCES Inventario.CPU(Host)
-            ON DELETE CASCADE
-            ON UPDATE CASCADE
-    );
-
-    CREATE INDEX idx_CPU_Software_Host ON Inventario.CPU_Software(Host_CPU);
-    PRINT 'Tabla Inventario.CPU_Software creada exitosamente.';
-END
-ELSE
-    PRINT 'Tabla Inventario.CPU_Software ya existe.';
+PRINT 'Eliminando objetos anteriores...';
 GO
 
--- ============================================================
--- 3. TABLA DE PERIFÉRICOS ASOCIADOS A CPU
--- ============================================================
-IF OBJECT_ID('Inventario.CPU_Perifericos', 'U') IS NULL
-BEGIN
-    CREATE TABLE Inventario.CPU_Perifericos (
-        ID INT PRIMARY KEY IDENTITY(1,1),
-        Host_CPU NVARCHAR(100) NOT NULL,
-        Tipo NVARCHAR(50) NOT NULL,
-        Modelo NVARCHAR(100),
-        No_Serie NVARCHAR(100),
-        Marca NVARCHAR(100),
-        Estado NVARCHAR(50),
-        Observaciones NVARCHAR(MAX),
-        Codigo_Barras NVARCHAR(255),
-        Codigo_ID NVARCHAR(100) UNIQUE,
-        Timestamp DATETIME DEFAULT GETDATE(),
-        Fecha_Creacion DATETIME DEFAULT GETDATE(),
-        
-        CONSTRAINT FK_CPU_Perifericos_Host 
-            FOREIGN KEY (Host_CPU) 
-            REFERENCES Inventario.CPU(Host)
-            ON DELETE CASCADE
-            ON UPDATE CASCADE
-    );
-
-    CREATE INDEX idx_CPU_Perifericos_Host ON Inventario.CPU_Perifericos(Host_CPU);
-    CREATE INDEX idx_CPU_Perifericos_Tipo ON Inventario.CPU_Perifericos(Tipo);
-    CREATE INDEX idx_CPU_Perifericos_Codigo ON Inventario.CPU_Perifericos(Codigo_ID);
-    PRINT 'Tabla Inventario.CPU_Perifericos creada exitosamente.';
-END
-ELSE
-    PRINT 'Tabla Inventario.CPU_Perifericos ya existe.';
+IF OBJECT_ID('Inventario.vw_Otros_Equipos', 'V') IS NOT NULL DROP VIEW Inventario.vw_Otros_Equipos;
+IF OBJECT_ID('Inventario.vw_CPU_Completo', 'V') IS NOT NULL DROP VIEW Inventario.vw_CPU_Completo;
 GO
 
--- ============================================================
--- 4. TABLA DE RELACIONES (QR ↔ CÓDIGOS DE BARRAS)
--- ============================================================
-IF OBJECT_ID('Inventario.CPU_Relaciones', 'U') IS NULL
-BEGIN
-    CREATE TABLE Inventario.CPU_Relaciones (
-        ID INT PRIMARY KEY IDENTITY(1,1),
-        Codigo_QR NVARCHAR(500),
-        Codigo_Barras_CPU NVARCHAR(255),
-        Tipo_Periferico NVARCHAR(50),
-        Codigo_Barras_Periferico NVARCHAR(255),
-        Timestamp DATETIME DEFAULT GETDATE()
-    );
-
-    CREATE INDEX idx_CPU_Relaciones_QR ON Inventario.CPU_Relaciones(Codigo_QR);
-    CREATE INDEX idx_CPU_Relaciones_Barras_CPU ON Inventario.CPU_Relaciones(Codigo_Barras_CPU);
-    PRINT 'Tabla Inventario.CPU_Relaciones creada exitosamente.';
-END
-ELSE
-    PRINT 'Tabla Inventario.CPU_Relaciones ya existe.';
+IF OBJECT_ID('Inventario.CPU_Relaciones', 'U') IS NOT NULL DROP TABLE Inventario.CPU_Relaciones;
+IF OBJECT_ID('Inventario.CPU_Perifericos', 'U') IS NOT NULL DROP TABLE Inventario.CPU_Perifericos;
+IF OBJECT_ID('Inventario.CPU_Software', 'U') IS NOT NULL DROP TABLE Inventario.CPU_Software;
+IF OBJECT_ID('Inventario.Otros_Equipos', 'U') IS NOT NULL DROP TABLE Inventario.Otros_Equipos;
+IF OBJECT_ID('Inventario.Auditoria', 'U') IS NOT NULL DROP TABLE Inventario.Auditoria;
+IF OBJECT_ID('Inventario.CPU', 'U') IS NOT NULL DROP TABLE Inventario.CPU;
 GO
 
--- ============================================================
--- 5. TABLA DE OTROS EQUIPAMIENTOS (Sillas, Mesas, etc.)
--- ============================================================
-IF OBJECT_ID('Inventario.Otros_Equipos', 'U') IS NULL
-BEGIN
-    CREATE TABLE Inventario.Otros_Equipos (
-        ID INT PRIMARY KEY IDENTITY(1,1),
-        Tipo NVARCHAR(100) NOT NULL,
-        Nombre NVARCHAR(500),
-        No_Serie NVARCHAR(200),
-        Marca NVARCHAR(200),
-        Modelo NVARCHAR(200),
-        Empresa NVARCHAR(200),
-        Edificio NVARCHAR(100),
-        Area NVARCHAR(200),
-        Ubicacion_En_Edificio NVARCHAR(250),
-        Estado NVARCHAR(50),
-        Tipo_Sensor NVARCHAR(100),
-        Resolucion_Pantalla NVARCHAR(50),
-        Sistema_Operativo NVARCHAR(100),
-        Observaciones NVARCHAR(MAX),
-        Codigo_Barras NVARCHAR(255),
-        Codigo_ID NVARCHAR(100) UNIQUE,
-        Timestamp DATETIME DEFAULT GETDATE(),
-        Fecha_Creacion DATETIME DEFAULT GETDATE(),
-        Fecha_Modificacion DATETIME DEFAULT GETDATE()
-    );
-
-    CREATE INDEX idx_Otros_Tipo ON Inventario.Otros_Equipos(Tipo);
-    CREATE INDEX idx_Otros_Empresa ON Inventario.Otros_Equipos(Empresa);
-    CREATE INDEX idx_Otros_Edificio ON Inventario.Otros_Equipos(Edificio);
-    CREATE INDEX idx_Otros_Codigo ON Inventario.Otros_Equipos(Codigo_ID);
-    PRINT 'Tabla Inventario.Otros_Equipos creada exitosamente.';
-END
-ELSE
-    PRINT 'Tabla Inventario.Otros_Equipos ya existe.';
+PRINT 'Creando tablas nuevas...';
 GO
 
--- ============================================================
--- 6. TABLA DE AUDITORÍA
--- ============================================================
-IF OBJECT_ID('Inventario.Auditoria', 'U') IS NULL
-BEGIN
-    CREATE TABLE Inventario.Auditoria (
-        ID INT PRIMARY KEY IDENTITY(1,1),
-        Tabla_Afectada NVARCHAR(100),
-        Tipo_Operacion NVARCHAR(20),
-        Cantidad_Registros INT,
-        Usuario NVARCHAR(100),
-        IP_Origen NVARCHAR(50),
-        Detalles NVARCHAR(MAX),
-        Fecha_Operacion DATETIME DEFAULT GETDATE()
-    );
-
-    CREATE INDEX idx_Auditoria_Tabla ON Inventario.Auditoria(Tabla_Afectada);
-    CREATE INDEX idx_Auditoria_Fecha ON Inventario.Auditoria(Fecha_Operacion);
-    PRINT 'Tabla Inventario.Auditoria creada exitosamente.';
-END
-ELSE
-    PRINT 'Tabla Inventario.Auditoria ya existe.';
+CREATE TABLE Inventario.CPU (
+    ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    Host NVARCHAR(100) NOT NULL,
+    No_Serie NVARCHAR(200) NULL,
+    Empresa NVARCHAR(200) NULL,
+    Edificio NVARCHAR(100) NULL,
+    Area NVARCHAR(200) NULL,
+    Estado NVARCHAR(50) NULL,
+    Marca NVARCHAR(200) NULL,
+    Modelo NVARCHAR(200) NULL,
+    Procesador NVARCHAR(150) NULL,
+    RAM NVARCHAR(50) NULL,
+    Capacidad_Disco NVARCHAR(50) NULL,
+    Tipo_Disco NVARCHAR(20) NULL,
+    Observaciones NVARCHAR(MAX) NULL,
+    Codigo_QR NVARCHAR(500) NULL,
+    Codigo_Barras_CPU NVARCHAR(255) NULL,
+    Timestamp DATETIME NULL,
+    Fecha_Creacion DATETIME NOT NULL CONSTRAINT DF_CPU_FechaCreacion DEFAULT GETDATE(),
+    Fecha_Modificacion DATETIME NOT NULL CONSTRAINT DF_CPU_FechaMod DEFAULT GETDATE(),
+    CONSTRAINT UQ_CPU_Host UNIQUE (Host),
+    CONSTRAINT UQ_CPU_CodigoBarras UNIQUE (Codigo_Barras_CPU),
+    CONSTRAINT UQ_CPU_CodigoQR UNIQUE (Codigo_QR)
+);
 GO
 
--- ============================================================
--- ALTER TABLE — Ampliar columnas en tablas ya existentes
--- Ejecutar siempre: si la columna ya es del tamaño correcto
--- SQL Server lo aplica sin error ni pérdida de datos.
--- ============================================================
-PRINT '';
-PRINT '🔧 Aplicando correcciones de columnas (ALTER TABLE)...';
+CREATE TABLE Inventario.CPU_Software (
+    ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    Host_CPU NVARCHAR(100) NOT NULL,
+    SO NVARCHAR(100) NULL,
+    Office NVARCHAR(100) NULL,
+    Antivirus NVARCHAR(100) NULL,
+    Lector_PDF NVARCHAR(100) NULL,
+    ERP NVARCHAR(100) NULL,
+    Otro_1 NVARCHAR(100) NULL,
+    Otro_2 NVARCHAR(100) NULL,
+    Otro_3 NVARCHAR(100) NULL,
+    Timestamp DATETIME NULL,
+    Fecha_Creacion DATETIME NOT NULL CONSTRAINT DF_CPU_SW_FechaCreacion DEFAULT GETDATE(),
+    Fecha_Modificacion DATETIME NOT NULL CONSTRAINT DF_CPU_SW_FechaMod DEFAULT GETDATE(),
+    CONSTRAINT UQ_CPU_Software_Host UNIQUE (Host_CPU),
+    CONSTRAINT FK_CPU_Software_Host FOREIGN KEY (Host_CPU)
+        REFERENCES Inventario.CPU(Host)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
 GO
 
--- Inventario.Otros_Equipos
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Codigo_Barras NVARCHAR(255);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Codigo_ID     NVARCHAR(100);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Nombre        NVARCHAR(500);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN No_Serie      NVARCHAR(200);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Marca         NVARCHAR(200);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Modelo        NVARCHAR(200);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Empresa       NVARCHAR(200);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Edificio      NVARCHAR(100);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Area          NVARCHAR(200);
-
-IF COL_LENGTH('Inventario.Otros_Equipos', 'Ubicacion_En_Edificio') IS NULL
-    ALTER TABLE Inventario.Otros_Equipos ADD Ubicacion_En_Edificio NVARCHAR(250);
-IF COL_LENGTH('Inventario.Otros_Equipos', 'Tipo_Sensor') IS NULL
-    ALTER TABLE Inventario.Otros_Equipos ADD Tipo_Sensor NVARCHAR(100);
-IF COL_LENGTH('Inventario.Otros_Equipos', 'Resolucion_Pantalla') IS NULL
-    ALTER TABLE Inventario.Otros_Equipos ADD Resolucion_Pantalla NVARCHAR(50);
-IF COL_LENGTH('Inventario.Otros_Equipos', 'Sistema_Operativo') IS NULL
-    ALTER TABLE Inventario.Otros_Equipos ADD Sistema_Operativo NVARCHAR(100);
-
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Ubicacion_En_Edificio NVARCHAR(250);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Tipo_Sensor           NVARCHAR(100);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Resolucion_Pantalla   NVARCHAR(50);
-ALTER TABLE Inventario.Otros_Equipos ALTER COLUMN Sistema_Operativo     NVARCHAR(100);
-PRINT '   ✅ Inventario.Otros_Equipos — columnas ampliadas.';
+CREATE TABLE Inventario.CPU_Perifericos (
+    ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    Host_CPU NVARCHAR(100) NOT NULL,
+    Periferico_UID NVARCHAR(100) NOT NULL,
+    Tipo NVARCHAR(50) NOT NULL,
+    Modelo NVARCHAR(100) NULL,
+    No_Serie NVARCHAR(200) NULL,
+    Marca NVARCHAR(200) NULL,
+    Estado NVARCHAR(50) NULL,
+    Observaciones NVARCHAR(MAX) NULL,
+    Codigo_Barras NVARCHAR(255) NULL,
+    Codigo_ID NVARCHAR(100) NULL,
+    Timestamp DATETIME NULL,
+    Fecha_Creacion DATETIME NOT NULL CONSTRAINT DF_CPU_Per_FechaCreacion DEFAULT GETDATE(),
+    Fecha_Modificacion DATETIME NOT NULL CONSTRAINT DF_CPU_Per_FechaMod DEFAULT GETDATE(),
+    CONSTRAINT UQ_CPU_Perifericos_UID UNIQUE (Periferico_UID),
+    CONSTRAINT UQ_CPU_Perifericos_CodigoID UNIQUE (Codigo_ID),
+    CONSTRAINT FK_CPU_Perifericos_Host FOREIGN KEY (Host_CPU)
+        REFERENCES Inventario.CPU(Host)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
 GO
 
--- Inventario.CPU_Perifericos
-ALTER TABLE Inventario.CPU_Perifericos ALTER COLUMN Codigo_Barras NVARCHAR(255);
-ALTER TABLE Inventario.CPU_Perifericos ALTER COLUMN Codigo_ID     NVARCHAR(100);
-PRINT '   ✅ Inventario.CPU_Perifericos — columnas ampliadas.';
+CREATE TABLE Inventario.CPU_Relaciones (
+    ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    Codigo_QR NVARCHAR(500) NULL,
+    Codigo_Barras_CPU NVARCHAR(255) NULL,
+    Tipo_Periferico NVARCHAR(50) NULL,
+    Codigo_Barras_Periferico NVARCHAR(255) NULL,
+    Timestamp DATETIME NULL,
+    Fecha_Creacion DATETIME NOT NULL CONSTRAINT DF_CPU_Rel_FechaCreacion DEFAULT GETDATE()
+);
 GO
 
--- Inventario.CPU
-ALTER TABLE Inventario.CPU ALTER COLUMN Codigo_Barras_CPU NVARCHAR(255);
-ALTER TABLE Inventario.CPU ALTER COLUMN Codigo_QR         NVARCHAR(500);
-ALTER TABLE Inventario.CPU ALTER COLUMN Empresa           NVARCHAR(200);
-ALTER TABLE Inventario.CPU ALTER COLUMN Area              NVARCHAR(200);
-ALTER TABLE Inventario.CPU ALTER COLUMN Edificio          NVARCHAR(100);
-PRINT '   ✅ Inventario.CPU — columnas ampliadas.';
+CREATE TABLE Inventario.Otros_Equipos (
+    ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    Tipo NVARCHAR(100) NOT NULL,
+    Nombre NVARCHAR(500) NULL,
+    No_Serie NVARCHAR(200) NULL,
+    Marca NVARCHAR(200) NULL,
+    Modelo NVARCHAR(200) NULL,
+    Empresa NVARCHAR(200) NULL,
+    Edificio NVARCHAR(100) NULL,
+    Area NVARCHAR(200) NULL,
+    Ubicacion_En_Edificio NVARCHAR(250) NULL,
+    Estado NVARCHAR(50) NULL,
+    Tipo_Sensor NVARCHAR(100) NULL,
+    Resolucion_Pantalla NVARCHAR(50) NULL,
+    Sistema_Operativo NVARCHAR(100) NULL,
+    Observaciones NVARCHAR(MAX) NULL,
+    Codigo_Barras NVARCHAR(255) NULL,
+    Codigo_ID NVARCHAR(100) NULL,
+    Timestamp DATETIME NULL,
+    Fecha_Creacion DATETIME NOT NULL CONSTRAINT DF_Otros_FechaCreacion DEFAULT GETDATE(),
+    Fecha_Modificacion DATETIME NOT NULL CONSTRAINT DF_Otros_FechaMod DEFAULT GETDATE(),
+    CONSTRAINT UQ_Otros_CodigoID UNIQUE (Codigo_ID)
+);
 GO
 
--- Inventario.CPU_Relaciones
-ALTER TABLE Inventario.CPU_Relaciones ALTER COLUMN Codigo_QR                NVARCHAR(500);
-ALTER TABLE Inventario.CPU_Relaciones ALTER COLUMN Codigo_Barras_CPU        NVARCHAR(255);
-ALTER TABLE Inventario.CPU_Relaciones ALTER COLUMN Codigo_Barras_Periferico NVARCHAR(255);
-PRINT '   ✅ Inventario.CPU_Relaciones — columnas ampliadas.';
+CREATE TABLE Inventario.Auditoria (
+    ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    Tabla_Afectada NVARCHAR(100) NULL,
+    Tipo_Operacion NVARCHAR(20) NULL,
+    Cantidad_Registros INT NULL,
+    Usuario NVARCHAR(100) NULL,
+    IP_Origen NVARCHAR(50) NULL,
+    Detalles NVARCHAR(MAX) NULL,
+    Fecha_Operacion DATETIME NOT NULL CONSTRAINT DF_Auditoria_Fecha DEFAULT GETDATE()
+);
 GO
 
--- ============================================================
--- 7. VISTAS ÚTILES
--- ============================================================
-
-IF OBJECT_ID('Inventario.vw_CPU_Completa', 'V') IS NOT NULL
-    DROP VIEW Inventario.vw_CPU_Completa;
-GO
-CREATE VIEW Inventario.vw_CPU_Completa AS
-SELECT 
-    cpu.ID, cpu.Host, cpu.No_Serie, cpu.Empresa, cpu.Edificio,
-    cpu.Area, cpu.Estado, cpu.Marca, cpu.Modelo, cpu.Procesador,
-    cpu.RAM, cpu.Capacidad_Disco, cpu.Tipo_Disco,
-    cpu.Codigo_QR, cpu.Codigo_Barras_CPU,
-    sw.SO, sw.Office, sw.Antivirus,
-    COUNT(DISTINCT per.ID) AS Total_Perifericos,
-    cpu.Timestamp
-FROM Inventario.CPU cpu
-LEFT JOIN Inventario.CPU_Software sw ON cpu.Host = sw.Host_CPU
-LEFT JOIN Inventario.CPU_Perifericos per ON cpu.Host = per.Host_CPU
-GROUP BY 
-    cpu.ID, cpu.Host, cpu.No_Serie, cpu.Empresa, cpu.Edificio,
-    cpu.Area, cpu.Estado, cpu.Marca, cpu.Modelo, cpu.Procesador,
-    cpu.RAM, cpu.Capacidad_Disco, cpu.Tipo_Disco,
-    cpu.Codigo_QR, cpu.Codigo_Barras_CPU,
-    sw.SO, sw.Office, sw.Antivirus, cpu.Timestamp;
-GO
-PRINT 'Vista Inventario.vw_CPU_Completa creada/actualizada.';
+CREATE INDEX IX_CPU_Host ON Inventario.CPU(Host);
+CREATE INDEX IX_CPU_Empresa ON Inventario.CPU(Empresa);
+CREATE INDEX IX_CPU_Edificio ON Inventario.CPU(Edificio);
+CREATE INDEX IX_CPU_Software_Host ON Inventario.CPU_Software(Host_CPU);
+CREATE INDEX IX_CPU_Perifericos_Host ON Inventario.CPU_Perifericos(Host_CPU);
+CREATE INDEX IX_CPU_Perifericos_Tipo ON Inventario.CPU_Perifericos(Tipo);
+CREATE INDEX IX_CPU_Relaciones_CPU ON Inventario.CPU_Relaciones(Codigo_Barras_CPU);
+CREATE INDEX IX_Otros_Tipo ON Inventario.Otros_Equipos(Tipo);
+CREATE INDEX IX_Otros_Empresa ON Inventario.Otros_Equipos(Empresa);
+CREATE INDEX IX_Otros_Edificio ON Inventario.Otros_Equipos(Edificio);
 GO
 
-IF OBJECT_ID('Inventario.vw_Perifericos_CPU', 'V') IS NOT NULL
-    DROP VIEW Inventario.vw_Perifericos_CPU;
-GO
-CREATE VIEW Inventario.vw_Perifericos_CPU AS
-SELECT 
-    cpu.Host AS CPU_Host, cpu.Codigo_Barras_CPU,
-    per.Tipo AS Tipo_Periferico, per.Modelo, per.Marca,
-    per.Estado, per.Codigo_ID, per.Timestamp
-FROM Inventario.CPU_Perifericos per
-INNER JOIN Inventario.CPU cpu ON per.Host_CPU = cpu.Host;
-GO
-PRINT 'Vista Inventario.vw_Perifericos_CPU creada/actualizada.';
+PRINT 'Creando vistas...';
 GO
 
-IF OBJECT_ID('Inventario.vw_Resumen_Empresa', 'V') IS NOT NULL
-    DROP VIEW Inventario.vw_Resumen_Empresa;
-GO
-CREATE VIEW Inventario.vw_Resumen_Empresa AS
-SELECT 
-    Empresa,
-    COUNT(DISTINCT ID) AS Total_CPUs,
-    COUNT(DISTINCT CASE WHEN Estado = 'Buen estado'            THEN ID END) AS Buen_Estado,
-    COUNT(DISTINCT CASE WHEN Estado = 'Futuro mantenimiento'   THEN ID END) AS Futuro_Mantenimiento,
-    COUNT(DISTINCT CASE WHEN Estado = 'Mal estado'             THEN ID END) AS Mal_Estado,
-    COUNT(DISTINCT CASE WHEN Estado = 'Equipo nuevo'           THEN ID END) AS Equipo_Nuevo
-FROM Inventario.CPU
-GROUP BY Empresa;
-GO
-PRINT 'Vista Inventario.vw_Resumen_Empresa creada/actualizada.';
-GO
-
-IF OBJECT_ID('Inventario.vw_Sensores', 'V') IS NOT NULL
-    DROP VIEW Inventario.vw_Sensores;
-GO
-CREATE VIEW Inventario.vw_Sensores AS
+CREATE VIEW Inventario.vw_CPU_Completo
+AS
 SELECT
-    ID, Tipo, Nombre, Tipo_Sensor, Empresa, Edificio, Area,
-    Ubicacion_En_Edificio, Estado, Codigo_ID, Timestamp
-FROM Inventario.Otros_Equipos
-WHERE Tipo = 'Sensores';
-GO
-PRINT 'Vista Inventario.vw_Sensores creada/actualizada.';
+    c.ID,
+    c.Host,
+    c.No_Serie,
+    c.Empresa,
+    c.Edificio,
+    c.Area,
+    c.Estado,
+    c.Marca,
+    c.Modelo,
+    c.Procesador,
+    c.RAM,
+    c.Capacidad_Disco,
+    c.Tipo_Disco,
+    c.Observaciones,
+    c.Codigo_QR,
+    c.Codigo_Barras_CPU,
+    c.Timestamp,
+    s.SO,
+    s.Office,
+    s.Antivirus,
+    s.Lector_PDF,
+    s.ERP,
+    s.Otro_1,
+    s.Otro_2,
+    s.Otro_3
+FROM Inventario.CPU c
+LEFT JOIN Inventario.CPU_Software s
+    ON s.Host_CPU = c.Host;
 GO
 
--- ============================================================
--- 8. STORED PROCEDURES
--- ============================================================
-
-IF OBJECT_ID('Inventario.sp_ObtenerCPU_Detalles', 'P') IS NOT NULL
-    DROP PROCEDURE Inventario.sp_ObtenerCPU_Detalles;
-GO
-CREATE PROCEDURE Inventario.sp_ObtenerCPU_Detalles
-    @Host NVARCHAR(100)
+CREATE VIEW Inventario.vw_Otros_Equipos
 AS
-BEGIN
-    SET NOCOUNT ON;
-    SELECT 'CPU'         AS Categoria, * FROM Inventario.CPU              WHERE Host     = @Host;
-    SELECT 'Software'    AS Categoria, * FROM Inventario.CPU_Software     WHERE Host_CPU = @Host;
-    SELECT 'Periféricos' AS Categoria, * FROM Inventario.CPU_Perifericos  WHERE Host_CPU = @Host;
-END;
-GO
-PRINT 'SP sp_ObtenerCPU_Detalles creado/actualizado.';
-GO
-
-IF OBJECT_ID('Inventario.sp_Equipos_Por_Edificio', 'P') IS NOT NULL
-    DROP PROCEDURE Inventario.sp_Equipos_Por_Edificio;
-GO
-CREATE PROCEDURE Inventario.sp_Equipos_Por_Edificio
-    @Edificio NVARCHAR(100)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SELECT 'CPU' AS Tipo, Host AS Nombre, No_Serie, Marca, Modelo, Estado, Timestamp
-    FROM Inventario.CPU WHERE Edificio = @Edificio
-    UNION ALL
-    SELECT
-        Tipo,
-        CASE
-            WHEN Tipo = 'Sensores' AND ISNULL(Tipo_Sensor, '') <> ''
-                THEN CONCAT(Nombre, ' (', Tipo_Sensor, ')')
-            ELSE Nombre
-        END AS Nombre,
-        No_Serie, Marca, Modelo, Estado, Timestamp
-    FROM Inventario.Otros_Equipos WHERE Edificio = @Edificio
-    ORDER BY Tipo, Nombre;
-END;
-GO
-PRINT 'SP sp_Equipos_Por_Edificio creado/actualizado.';
+SELECT
+    ID,
+    Tipo,
+    Nombre,
+    No_Serie,
+    Marca,
+    Modelo,
+    Empresa,
+    Edificio,
+    Area,
+    Ubicacion_En_Edificio,
+    Estado,
+    Tipo_Sensor,
+    Resolucion_Pantalla,
+    Sistema_Operativo,
+    Observaciones,
+    Codigo_Barras,
+    Codigo_ID,
+    Timestamp
+FROM Inventario.Otros_Equipos;
 GO
 
--- ============================================================
--- 9. VERIFICACIÓN FINAL
--- ============================================================
-PRINT '';
-PRINT '✅ VERIFICACIÓN DE TABLAS:';
-SELECT name AS Tabla, CONVERT(VARCHAR(19), create_date, 121) AS Fecha_Creacion
-FROM sys.objects WHERE type = 'U' AND schema_id = SCHEMA_ID('Inventario') ORDER BY name;
-
-PRINT '';
-PRINT '✅ VERIFICACIÓN DE VISTAS:';
-SELECT name AS Vista, CONVERT(VARCHAR(19), create_date, 121) AS Fecha_Creacion
-FROM sys.objects WHERE type = 'V' AND schema_id = SCHEMA_ID('Inventario') ORDER BY name;
-
-PRINT '';
-PRINT '═══════════════════════════════════════════════════════';
-PRINT '✅ INSTALACIÓN v2.1 COMPLETADA EXITOSAMENTE';
-PRINT '═══════════════════════════════════════════════════════';
+PRINT '✅ Estructura Inventario creada correctamente.';
 GO

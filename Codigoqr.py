@@ -601,8 +601,8 @@ def extraer_tres_letras(nombre: str) -> str:
     return f"{limpio[0]}{limpio[len(limpio) // 2]}{limpio[-1]}"
 
 
-def generar_qr_cpu(estructura_cpu: dict, numero_correlativo: int) -> tuple:
-    """Genera UN SOLO QR para toda la estructura CPU."""
+def generar_qr_cpu(estructura_cpu: dict) -> tuple:
+    """Genera un QR informativo para la CPU sin asignar IDs finales."""
     contenido_json = json.dumps({
         "tipo": "CPU",
         "host": estructura_cpu["cpu"].get("host", ""),
@@ -611,13 +611,14 @@ def generar_qr_cpu(estructura_cpu: dict, numero_correlativo: int) -> tuple:
         "timestamp": estructura_cpu["timestamp"],
     })
 
-    codigo_id = f"CPU{numero_correlativo:04d}"
-    ruta_qr = os.path.join(carpeta_salida, f"qr_{codigo_id}.png")
+    host = estructura_cpu["cpu"].get("host", "sin_host").replace(" ", "_")
+    ts_archivo = estructura_cpu["timestamp"].replace(":", "").replace("-", "").replace(" ", "_")
+    ruta_qr = os.path.join(carpeta_salida, f"QR_CPU_{host}_{ts_archivo}.png")
     
     qrcode.make(contenido_json).save(ruta_qr)
     print(f"   📷 QR CPU    → {ruta_qr}")
     
-    return ruta_qr, contenido_json, codigo_id
+    return ruta_qr, contenido_json
 
 
 def generar_barras_objeto(tipo: str, numero_correlativo: int) -> tuple:
@@ -649,8 +650,7 @@ def generar_barras_simple(nombre: str, numero_correlativo: int) -> tuple:
 # GUARDAR EN EXCEL
 # ──────────────────────────────────────────────
 
-def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str, 
-                                    codigo_barras_cpu: str, codigos_perifericos: dict):
+def guardar_estructura_cpu_en_excel(estructura_cpu: dict):
     """Guarda la estructura CPU en múltiples hojas."""
     
     excel_path = ARCHIVO_SESION
@@ -670,8 +670,8 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
         "Capacidad_Disco": estructura_cpu["cpu"].get("capacidad_disco", ""),
         "Tipo_Disco": estructura_cpu["cpu"].get("tipo_disco", ""),
         "Observaciones": estructura_cpu["cpu"].get("observaciones", ""),
-        "Codigo_QR": codigo_qr,
-        "Codigo_Barras_CPU": codigo_barras_cpu,
+        "Codigo_QR": "",
+        "Codigo_Barras_CPU": "",
         "Timestamp": estructura_cpu["timestamp"],
     }
     
@@ -693,17 +693,8 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
     df_software = pd.DataFrame([fila_software])
     
     filas_perifericos = []
-    contadores_tipo = {}
     for periferico in estructura_cpu["perifericos"]:
         tipo_periferico = periferico["tipo"]
-        contadores_tipo[tipo_periferico] = contadores_tipo.get(tipo_periferico, 0) + 1
-        sufijo = contadores_tipo[tipo_periferico]
-        clave = f"{tipo_periferico}_{sufijo}"
-
-        datos_codigo = codigos_perifericos.get(clave, {})
-        codigo_barras = datos_codigo.get("barras", "")
-        codigo_id     = datos_codigo.get("codigo_id", "")
-        
         fila = {
             "Host_CPU":      estructura_cpu["cpu"].get("host", ""),
             "Tipo":          tipo_periferico,
@@ -712,24 +703,18 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
             "Marca":         periferico.get("marca", ""),
             "Estado":        periferico.get("estado", ""),
             "Observaciones": periferico.get("observaciones", ""),
-            "Codigo_Barras": codigo_barras,
-            "Codigo_ID":     codigo_id,
+            "Codigo_Barras": "",
+            "Codigo_ID":     "",
+            "Periferico_UID": "",
             "Timestamp":     estructura_cpu["timestamp"],
         }
         filas_perifericos.append(fila)
     
     df_perifericos = pd.DataFrame(filas_perifericos) if filas_perifericos else pd.DataFrame()
     
-    filas_relaciones = [{"Codigo_QR": codigo_qr, "Codigo_Barras_CPU": codigo_barras_cpu,
-                         "Tipo_Periferico": None, "Codigo_Barras_Periferico": None}]
-    for clave, datos in codigos_perifericos.items():
-        filas_relaciones.append({
-            "Codigo_QR":               codigo_qr,
-            "Codigo_Barras_CPU":        codigo_barras_cpu,
-            "Tipo_Periferico":          datos.get("tipo", ""),
-            "Codigo_Barras_Periferico": datos.get("barras", ""),
-        })
-    df_relaciones = pd.DataFrame(filas_relaciones)
+    df_relaciones = pd.DataFrame(columns=[
+        "Codigo_QR", "Codigo_Barras_CPU", "Tipo_Periferico", "Codigo_Barras_Periferico"
+    ])
     
     try:
         if os.path.exists(excel_path):
@@ -768,7 +753,7 @@ def guardar_estructura_cpu_en_excel(estructura_cpu: dict, codigo_qr: str,
         print(f"   ❌ Error guardando en Excel: {e}")
 
 
-def guardar_estructura_simple_en_excel(estructura: dict, codigo_barras: str, codigo_id: str):
+def guardar_estructura_simple_en_excel(estructura: dict):
     """Guarda equipamiento simple en Excel."""
     
     excel_path = ARCHIVO_SESION
@@ -788,8 +773,8 @@ def guardar_estructura_simple_en_excel(estructura: dict, codigo_barras: str, cod
         "Resolucion_Pantalla": estructura["datos"].get("resolucion_pantalla", ""),
         "Sistema_Operativo": estructura["datos"].get("sistema_operativo", ""),
         "Observaciones": estructura["datos"].get("observaciones", ""),
-        "Codigo_Barras": codigo_id,
-        "Codigo_ID": codigo_id,
+        "Codigo_Barras": "",
+        "Codigo_ID": "",
         "Timestamp": estructura["timestamp"],
     }
     
@@ -874,7 +859,6 @@ def ejecutar_sistema():
     
     archivos_sesion = []
     total_registros = 0
-    numero_correlativo = 1
 
     print("\n" + "=" * 60)
     print("  SISTEMA DE INVENTARIO QR v2.1")
@@ -916,24 +900,18 @@ def ejecutar_sistema():
                     continue  # Volver a registrar esta CPU
                 
                 # Generar QR
-                ruta_qr, contenido_qr, codigo_qr = generar_qr_cpu(estructura, numero_correlativo)
+                ruta_qr, contenido_qr = generar_qr_cpu(estructura)
                 archivos_sesion.append(ruta_qr)
                 
                 # Generar código de barras para la CPU
-                ruta_barras_cpu, codigo_barras_cpu = generar_barras_objeto(
-                    "CPU", numero_correlativo
-                )
-                archivos_sesion.append(ruta_barras_cpu)
                 
                 # Generar códigos de barras para cada periférico
                 # FIX: Usamos lista de (tipo, datos) para soportar 2 del mismo tipo (ej: 2 monitores)
                 # Antes (bug): dict con clave=tipo → el segundo monitor sobreescribía al primero
                 # Ahora (fix): contador por tipo para generar IDs únicos (MON0001, MON0002, etc.)
-                codigos_perifericos = {}
-                contadores_tipo = {}
-                for periferico in estructura["perifericos"]:
+                # Los IDs definitivos de CPU y periféricos se asignan en el receptor.
+                for periferico in []:
                     tipo_p = periferico["tipo"]
-                    contadores_tipo[tipo_p] = contadores_tipo.get(tipo_p, 0) + 1
                     # Código único: tipo + correlativo_global + instancia del tipo
                     sufijo = contadores_tipo[tipo_p]
                     ruta_barras_periferico, codigo_id = generar_barras_objeto(
@@ -951,15 +929,9 @@ def ejecutar_sistema():
                     }
                 
                 # Guardar en Excel
-                guardar_estructura_cpu_en_excel(
-                    estructura,
-                    codigo_qr,
-                    codigo_barras_cpu,
-                    codigos_perifericos
-                )
+                guardar_estructura_cpu_en_excel(estructura)
                 
                 total_registros += 1 + len(estructura["perifericos"])
-                numero_correlativo += 1
                 print(f"\n✅ CPU registrada y guardada.")
                 break  # Volver al menú principal
 
@@ -971,17 +943,12 @@ def ejecutar_sistema():
                 continue  # Volver al menú principal
             
             # Generar código de barras
-            ruta_barras, codigo_id = generar_barras_simple(
-                estructura["datos"]["nombre"],
-                numero_correlativo
-            )
-            archivos_sesion.append(ruta_barras)
+            # Los IDs de otros equipos se asignan del lado receptor.
             
             # Guardar en Excel
-            guardar_estructura_simple_en_excel(estructura, ruta_barras, codigo_id)
+            guardar_estructura_simple_en_excel(estructura)
             
             total_registros += 1
-            numero_correlativo += 1
             print(f"✅ {estructura['tipo_inventario']} registrado y guardado.")
 
         # Preguntar si continuar
