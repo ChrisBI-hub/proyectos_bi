@@ -490,7 +490,7 @@ def main():
     try:
         main_loop()
     except KeyboardInterrupt:
-        print("\n🛑 Detenido por el usuario.")
+        print("\n🛑 Detenido por el usuario. revisar continuidad")
 
 
 if __name__ == "__main__":

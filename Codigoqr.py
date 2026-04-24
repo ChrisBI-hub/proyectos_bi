@@ -994,7 +994,7 @@ if __name__ == "__main__":
     try:
         ejecutar_sistema()
     except KeyboardInterrupt:
-        print("\n\n🛑 Sistema interrumpido por el usuario.")
+        print("\n\n🛑 Sistema interrumpido por el usuario. revisar la información")
         sys.exit(0)
     except Exception as e:
         print(f"\n❌ Error fatal: {e}")
